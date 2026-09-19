@@ -125,7 +125,7 @@ locate code by function name, not by line.
 - Scrolling the product list must never trigger minimize.
 - **Test:** tap overlay/header → nothing; swipe down on header → minimized mini bar with cart intact; short drag (40 px) → springs back; swipe up on mini bar → sale restored; scroll product list → no minimize.
 
-### [ ] A7 · Margins in inventory + live price from target margin
+### [x] A7 · Margins in inventory + live price from target margin
 - Product modal (`renderProductModal` / `saveProduct`): add **Margen %** between cost and sale price.
   - Typing margin → sale price = `ceil(costo / (1 − m/100) / 100) × 100` **live**; show below it
     `Margen real: 31,4 %` (after rounding). For `unit==='g'` (price per gram) round up to 0,1 instead.
