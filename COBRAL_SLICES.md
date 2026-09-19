@@ -145,7 +145,11 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
 
 ## Phase B — Backend: Firebase Auth + Firestore sync (release as **v6.0** with Phase C)
 
-### [ ] B1 · Firebase project (Opus — account operations)
+### [x] B1 · Firebase project (Opus — account operations)
+- **Done 2026-09-19:** project `cobral-app`, web app `1:60325446787:web:292ff3035908f69c2f07b6`,
+  Email/Password enabled (`firebase deploy --only auth`), Firestore `(default)` created **in `nam5` (US)** —
+  pending Jimbo's call on moving it to `southamerica-west1` while it's still empty. Rules deployed.
+  Config: `www/cloud/config.js` (`window.COBRAL_FIREBASE_CONFIG`).
 - Create project `cobral-*` in la cuenta de Google de Jimbo, register a Web app, enable Email/Password
   auth, create Firestore in `southamerica-west1` (Santiago). Deploy rules:
   `match /users/{uid}/{document=**} { allow read, write: if request.auth.uid == uid; }`.
