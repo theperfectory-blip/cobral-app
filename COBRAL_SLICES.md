@@ -142,14 +142,38 @@ Original checklist: bump title/CSV headers to **v5.6**, full regression pass on 
 (sale → payment → Ventas → edit sale → debt → inventory CSV export), update `COBRAL_CODE_MAP_EN.md`,
 copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to install over the current one.
 
+### [ ] A8 · Prices per location (requested 2026-09-19, ships in v6.0)
+Jimbo sells some products cheaper at some locations (e.g. Guillermo Mann vs Los Aromos / María Celeste).
+Decisions: **special price per product per location** (optional; otherwise the normal price); **offers are the same
+everywhere**; **the cart uses the current location's price**.
+- Data: optional `product.locationPrices = { "<location name>": price }` (keys = the location names used in
+  `state.locations` values and `sale.location`). Old products without it keep working. Syncs as part of the product doc.
+- Helper `getProductPrice(p, loc = state.currentLocation)` → `p.locationPrices?.[loc] ?? p.salePrice`; use it everywhere a
+  list price is taken: `addToCart` (current location), edit sale (the sale's `location`), edit debt (the debt's `location`),
+  sale-picker card price, and `calculateItemPrice` (offers apply when the item price equals that location's list price,
+  i.e. not manually edited — today it compares with `p.salePrice`).
+- Changing the current location while a sale is open: cart lines still at the old location's list price switch to the
+  new location's price; manually edited prices stay. Picker cards and totals refresh.
+- Product modal: section **"Precios por ubicación"** listing each distinct location name with an optional price input
+  (placeholder = precio normal) and a live margin pill per location (same formula/colors as A7). Empty = normal price.
+- Sale picker card: shows the current location's price; when it's a special price, a small tag with the location name.
+  Inventory list: normal price + a small "N precios por ubicación" hint; margin pill keeps using the normal price.
+- Renaming a location in `openLocationModal` migrates `locationPrices` keys (old name → new name) when no other day still uses the old name.
+- Inventory CSV: new optional column `PreciosUbicacion` = `Mann:7500|Los Aromos:8000` (export + import; missing column = none;
+  update the embedded instructions).
+- **Test:** Miel ulmo normal $8.000, Mann $7.500 → location Mann: card and cart show $7.500 → switch to Los Aromos with the
+  sale open → $8.000; a manually edited line keeps its price; an offer product still applies its offer at normal price;
+  edit an old sale made at Mann → added items use Mann prices; CSV export → import round-trip keeps the prices; sync to the
+  peer keeps `locationPrices`.
+
 ---
 
 ## Phase B — Backend: Firebase Auth + Firestore sync (release as **v6.0** with Phase C)
 
 ### [x] B1 · Firebase project (Opus — account operations)
 - **Done 2026-09-19:** project `cobral-app`, web app `1:60325446787:web:292ff3035908f69c2f07b6`,
-  Email/Password enabled (`firebase deploy --only auth`), Firestore `(default)` created **in `nam5` (US)** —
-  pending Jimbo's call on moving it to `southamerica-west1` while it's still empty. Rules deployed.
+  Email/Password enabled (`firebase deploy --only auth`), Firestore `(default)` recreated **in `southamerica-west1` (Santiago)** on 2026-09-19 (the first one was auto-created in `nam5`; deleted while empty, 0 prod users) —
+  rules redeployed.
   Config: `www/cloud/config.js` (`window.COBRAL_FIREBASE_CONFIG`).
 - Create project `cobral-*` in la cuenta de Google de Jimbo, register a Web app, enable Email/Password
   auth, create Firestore in `southamerica-west1` (Santiago). Deploy rules:
