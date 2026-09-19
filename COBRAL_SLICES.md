@@ -137,7 +137,8 @@ locate code by function name, not by line.
 - Sort modal: add **Mayor margen** / **Menor margen**.
 - **Test:** cost 1.000 + margin 30 → price 1.500, "Margen real 33,3 %"; type price 1.200 → margin 16,7; change cost to 800 with margin 30 → 1.200; sorting and colors correct; save persists.
 
-**Phase A exit:** bump title/CSV headers to **v5.6**, full regression pass on the emulator
+**Phase A exit — DONE 2026-09-19** (regression passed: sale→débito, edit sale, debt + abono, inventory CSV share; `Cobral_v5.6.apk` versionCode 56).
+Original checklist: bump title/CSV headers to **v5.6**, full regression pass on the emulator
 (sale → payment → Ventas → edit sale → debt → inventory CSV export), update `COBRAL_CODE_MAP_EN.md`,
 copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to install over the current one.
 
