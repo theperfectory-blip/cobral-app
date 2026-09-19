@@ -142,7 +142,7 @@ Original checklist: bump title/CSV headers to **v5.6**, full regression pass on 
 (sale → payment → Ventas → edit sale → debt → inventory CSV export), update `COBRAL_CODE_MAP_EN.md`,
 copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to install over the current one.
 
-### [ ] A8 · Prices per location (requested 2026-09-19, ships in v6.0)
+### [x] A8 · Prices per location (requested 2026-09-19, ships in v6.0)
 Jimbo sells some products cheaper at some locations (e.g. Guillermo Mann vs Los Aromos / María Celeste).
 Decisions: **special price per product per location** (optional; otherwise the normal price); **offers are the same
 everywhere**; **the cart uses the current location's price**.
