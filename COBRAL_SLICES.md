@@ -168,7 +168,7 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   emulators incl. offline queueing (`npm run e2e:cloud`, needs JAVA_HOME + PATH + the JAVA_TOOL_OPTIONS workaround).
   API: `init/signIn/signUp/signOut/resetPassword/currentUser/push/firstSync/status` — see header of `cloud-src/cobral-cloud.js`.
 
-### [ ] B3 · Wire sync into the app (Sonnet, `index.html`)
+### [x] B3 · Wire sync into the app (Sonnet, `index.html`)
 - Sync `settings` WITHOUT device preferences: `darkMode` and `soundEnabled` stay per-device.
 - `numVenta` can collide when two devices sell offline: after merges, keep numbers unique (later sale by date gets the next free number) and never renumber existing unique tickets.
 - Known limitation to tell Jimbo: `stock` on products is last-write-wins — two devices selling the same product at the same time can lose one decrement.
@@ -181,6 +181,22 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   merge by id (sale numbers re-assigned by date with `assignSaleNumbers` rules).
 - **Test (Opus):** emulator APK + web client on the same account: sale on one appears on the other;
   airplane mode on the emulator → sale → back online → synced; delete propagates; logout keeps local data.
+
+### [ ] B4 · Stock merge by deltas (found testing B3)
+- Problem (reproduced on the emulator): stock is last-write-wins. A remote product update that was queued during
+  an open sale is applied after the sale and overwrites the local decrement (sold 2 locally + 1 remotely → only 1 counted).
+- Fix: three-way merge for `products[].stock`. The module keeps `shadowStock[id]` = last stock value this device
+  knows is in the cloud (set on remote receipt and on push dispatch) and passes it as `_baseStock` with product
+  upserts in `onRemote`. The app merges `stock = remote.stock + (local.stock − base)` (other fields: remote wins),
+  then `saveData()` pushes the merged value. Concurrent decrements on two devices must converge to base − a − b.
+- Tests: unit tests in sync-core, an e2e step with two clients selling the same product concurrently, and Opus
+  repeats the queued-during-sale scenario on the emulator.
+
+### Test infra for Phase B (emulator only)
+- `bash tools/emulators.sh` (background) starts Auth+Firestore emulators and `adb reverse` 9099/8080.
+- In the app: `localStorage.cobralEmulatorHost='127.0.0.1'` (set via cdp) → the cloud module targets the emulators.
+- `android/app/src/debug/` adds a debug-only network security config allowing cleartext to 127.0.0.1/10.0.2.2/localhost.
+- `node tools/sync-peer.mjs dump|add-sale|delete-sale|watch <email> <pass> …` = second device (Node).
 
 ---
 
