@@ -55,13 +55,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .stat-label{font-size:12px;opacity:0.85;margin-bottom:4px}
 .stat-value{font-size:20px;font-weight:700}
 .stat-value.positive{color:var(--gold)}
-.product-card{display:flex;gap:12px;padding:12px;background:var(--white);border-radius:var(--radius);margin:8px 16px;box-shadow:var(--shadow-md);border:1px solid var(--gray-100);cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease}
+.product-card{position:relative;display:flex;gap:12px;padding:12px;background:var(--white);border-radius:var(--radius);margin:8px 16px;box-shadow:var(--shadow-md);border:1px solid var(--gray-100);cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease}
 .product-card:active{transform:scale(0.98);box-shadow:var(--shadow-sm)}
-.product-card.in-cart{border:2px solid var(--primary);background:var(--primary-light);position:relative}
-.product-remove{position:absolute;top:-8px;right:-8px;width:24px;height:24px;background:var(--danger);color:var(--white);border:2px solid var(--white);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-sm);z-index:5}
-.product-remove svg{width:14px;height:14px}
-.product-remove:active{transform:scale(0.9)}
+.product-card.in-cart{border:2px solid var(--primary);background:var(--primary-light)}
 .product-card.just-added{animation:addedToCart 0.3s ease}
+.product-tap-layer{position:absolute;inset:0;display:flex;border-radius:var(--radius);overflow:hidden}
+.product-tap-layer::after{content:'';position:absolute;top:10%;bottom:10%;left:50%;width:0;border-left:1px dashed rgba(0,0,0,0.12)}
+.tap-half{flex:0 0 50%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;transition:background 0.15s ease}
+.tap-plus{background:rgba(30,58,95,0.05);justify-content:flex-start;padding-left:12%}
+.tap-plus:active{background:rgba(30,58,95,0.13)}
+.tap-minus{background:rgba(214,40,40,0.07);justify-content:flex-start;padding-left:20px}
+.tap-minus:active{background:rgba(214,40,40,0.15)}
+.tap-minus.tap-inactive{background:transparent;pointer-events:none}
+.tap-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;line-height:1;border:1.5px solid;background:rgba(255,255,255,0.95);box-shadow:0 1px 3px rgba(0,0,0,0.15)}
+.tap-icon-plus{color:var(--primary);border-color:var(--primary)}
+.tap-icon-minus{color:var(--danger);border-color:var(--danger);font-size:28px}
+.tap-minus.tap-inactive .tap-icon{display:none}
+.qty-badge{color:var(--primary);font-size:12px}
 @keyframes addedToCart{0%{transform:scale(1)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
 .product-image{width:60px;height:60px;border-radius:var(--radius-sm);background:var(--primary-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
 .product-image img{width:100%;height:100%;object-fit:cover}
@@ -262,7 +272,7 @@ body.dark-mode .payment-method{background:#1a3352;border-color:#234a6e;color:#dc
 body.dark-mode .payment-method.selected{border-color:var(--gold);background:#1e3a5f}
 body.dark-mode .location-tag{background:#1a3352;color:var(--gold)}
 body.dark-mode .sale-badge{background:#1a3352;color:var(--gold)}
-body.dark-mode .product-stock{background:#1a3352;color:var(--success)}
+body.dark-mode .product-stock{background:#1a3352;color:#5fd39a}
 body.dark-mode .product-stock.low{background:#3a1a1a;color:var(--danger)}
 body.dark-mode .schedule-input{background:#1a3352;border-color:#234a6e;color:#dce8f2}
 body.dark-mode .photo-upload{background:#1a3352;border-color:#234a6e}
@@ -323,7 +333,15 @@ body.dark-mode .item-highlight{background:#1e3a5f;color:var(--gold)}
 body.dark-mode .stat-label{color:rgba(255,255,255,0.75)}
 body.dark-mode .header-subtitle{color:rgba(255,255,255,0.85)}
 body.dark-mode .debt-badge{background:#1a3a2a;color:var(--success)}
-body.dark-mode .product-remove{background:var(--danger);color:#fff}
+body.dark-mode .product-tap-layer::after{border-left-color:rgba(255,255,255,0.14)}
+body.dark-mode .tap-plus{background:rgba(220,232,242,0.035)}
+body.dark-mode .tap-plus:active{background:rgba(220,232,242,0.09)}
+body.dark-mode .tap-minus{background:rgba(214,40,40,0.04)}
+body.dark-mode .tap-minus:active{background:rgba(214,40,40,0.09)}
+body.dark-mode .tap-minus.tap-inactive{background:transparent}
+body.dark-mode .tap-icon{background:rgba(21,42,69,0.85)}
+body.dark-mode .tap-icon-plus{color:var(--gold);border-color:var(--gold)}
+body.dark-mode .qty-badge{color:var(--gold)}
 body.dark-mode .mini-bar-icon{background:rgba(255,255,255,0.15)}
 body.dark-mode .mini-bar-close{background:rgba(255,255,255,0.15);color:#dce8f2}
 body.dark-mode select.input{background:#1a3352;color:#dce8f2}
@@ -966,7 +984,7 @@ if(el)el.innerHTML=list.length?list.map(p=>{
 const cartItem=state.cart.find(c=>c.productId===p.id);
 const inCart=!!cartItem;
 const justAdded=state.lastAddedId===p.id;
-return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}" onclick="addToEditDebtCart(${p.id})">${inCart?'<div class="product-remove" onclick="event.stopPropagation();removeFromEditDebtCart('+p.id+')">'+SVG.close+'</div>':''}<div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span style="color:var(--primary);font-size:12px">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}</div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
+return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}"><div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span class="qty-badge">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}</div><div class="product-tap-layer"><div class="tap-half tap-minus ${inCart?'':'tap-inactive'}" onclick="event.stopPropagation();subtractFromEditDebtCart(${p.id})"><span class="tap-icon tap-icon-minus">−</span></div><div class="tap-half tap-plus" onclick="event.stopPropagation();addToEditDebtCart(${p.id})"><span class="tap-icon tap-icon-plus">+</span></div></div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
 if(state.lastAddedId){setTimeout(()=>{state.lastAddedId=null},350)}
 const catEl=document.getElementById('editDebtCatPills');
 if(catEl)catEl.innerHTML=state.categories.map(c=>`<button class="category-pill ${state.selectedCategory===c?'active':''}" onclick="selectEditDebtCategory('${c}')">${c}</button>`).join('')}
@@ -999,12 +1017,57 @@ else{state.cart.push({productId:id,name:p.name,price:p.salePrice,costPrice:p.cos
 p.stock-=addQty;
 state.lastAddedId=id;
 if(p.stock<=0)playSound('warning');else playSound('add');
-renderEditDebtProducts();renderEditDebtCart()}
+updateEditDebtDisplayInPlace(id);
+renderEditDebtCart();
+const card=document.querySelector(`[data-product-id="${id}"]`);
+if(card){card.classList.remove('just-added');void card.offsetWidth;card.classList.add('just-added');setTimeout(()=>card.classList.remove('just-added'),350)}}
+
+function subtractFromEditDebtCart(id){
+const item=state.cart.find(x=>x.productId===id);
+if(!item)return;
+updateEditDebtQtyRT(id,-gStep(id))}
+
+function updateEditDebtQtyRT(id,delta){
+const item=state.cart.find(x=>x.productId===id);
+const p=state.products.find(x=>x.id===id);
+if(!item||!p)return;
+const oldQty=item.qty;
+item.qty+=delta;
+if(item.qty<=0){
+p.stock+=oldQty;
+state.cart=state.cart.filter(x=>x.productId!==id);
+playSound('remove');
+}else{
+p.stock-=delta;
+playSound('tick');
+}
+updateEditDebtDisplayInPlace(id);
+renderEditDebtCart()}
+
+function updateEditDebtDisplayInPlace(id){
+const p=state.products.find(x=>x.id===id);
+const productCard=document.querySelector(`[data-product-id="${id}"]`);
+if(productCard&&p){
+const nameEl=productCard.querySelector('.product-name');
+const stockEl=productCard.querySelector('.product-stock');
+const cartItem=state.cart.find(c=>c.productId===id);
+if(nameEl){
+if(cartItem)nameEl.innerHTML=p.name+' <span class="qty-badge">(x'+cartItem.qty+')</span>';
+else nameEl.textContent=p.name;
+}
+if(stockEl){
+stockEl.textContent=p.stock+(p.unit==='g'?'g':'')+' disp.';
+stockEl.className='product-stock'+(p.stock<=0?' low':'');
+}
+productCard.classList.toggle('in-cart',!!cartItem);
+const minusEl=productCard.querySelector('.tap-minus');
+if(minusEl)minusEl.classList.toggle('tap-inactive',!cartItem);
+}}
 
 function removeFromEditDebtCart(id){
 const item=state.cart.find(x=>x.productId===id);
 const p=state.products.find(x=>x.id===id);
-if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');renderEditDebtProducts();renderEditDebtCart()}}
+if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');updateEditDebtDisplayInPlace(id);renderEditDebtCart()}}
 
 function updateEditDebtPrice(id,val){
 const item=state.cart.find(x=>x.productId===id);
@@ -1019,8 +1082,8 @@ if(val===''||val===null)return;
 const newQty=parseInt(val);
 if(isNaN(newQty))return;
 const oldQty=item.qty;
-if(newQty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);renderEditDebtProducts();renderEditDebtCart()}
-else{p.stock-=(newQty-oldQty);item.qty=newQty;renderEditDebtCart()}}}
+if(newQty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');updateEditDebtDisplayInPlace(id);renderEditDebtCart()}
+else{p.stock-=(newQty-oldQty);item.qty=newQty;updateEditDebtDisplayInPlace(id);renderEditDebtCart()}}}
 
 function cancelEditDebt(){
 playSound('back');
@@ -1168,7 +1231,7 @@ const cartItem=state.cart.find(c=>c.productId===p.id);
 const inCart=!!cartItem;
 const justAdded=state.lastAddedId===p.id;
 const offerBadge=p.offers&&p.offers.length?`<span class="offer-badge">${p.offers[0].qty}x$${p.offers[0].price}</span>`:'';
-return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}" onclick="addToCart(${p.id})">${inCart?'<div class="product-remove" onclick="event.stopPropagation();removeFromCart('+p.id+')">'+SVG.close+'</div>':''}<div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span style="color:var(--primary);font-size:12px">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}${offerBadge}</div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
+return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}"><div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span class="qty-badge">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}${offerBadge}</div><div class="product-tap-layer"><div class="tap-half tap-minus ${inCart?'':'tap-inactive'}" onclick="event.stopPropagation();subtractFromCart(${p.id})"><span class="tap-icon tap-icon-minus">−</span></div><div class="tap-half tap-plus" onclick="event.stopPropagation();addToCart(${p.id})"><span class="tap-icon tap-icon-plus">+</span></div></div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
 if(state.lastAddedId){setTimeout(()=>{state.lastAddedId=null},350)}
 const catEl=document.getElementById('saleCatPills');
 if(catEl)catEl.innerHTML=state.categories.map(c=>`<button class="category-pill ${state.selectedCategory===c?'active':''}" onclick="selectSaleCategory('${c}')">${c}</button>`).join('')}
@@ -1203,12 +1266,20 @@ else{state.cart.push({productId:id,name:p.name,price:p.salePrice,costPrice:p.cos
 p.stock-=addQty;
 state.lastAddedId=id;
 if(p.stock<=0)playSound('warning');else playSound('add');
-renderSaleProducts();renderSaleCart()}
+updateCartDisplayInPlace(id,state.cart.find(x=>x.productId===id).qty);
+renderSaleCart();
+const card=document.querySelector(`[data-product-id="${id}"]`);
+if(card){card.classList.remove('just-added');void card.offsetWidth;card.classList.add('just-added');setTimeout(()=>card.classList.remove('just-added'),350)}}
+
+function subtractFromCart(id){
+const item=state.cart.find(x=>x.productId===id);
+if(!item)return;
+updateCartQtyRT(id,-gStep(id))}
 
 function removeFromCart(id){
 const item=state.cart.find(x=>x.productId===id);
 const p=state.products.find(x=>x.id===id);
-if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');renderSaleProducts();renderSaleCart()}}
+if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');updateCartDisplayInPlace(id,0);renderSaleCart()}}
 
 function updateCartQtyRT(id,delta){
 playSound('tick');
@@ -1220,7 +1291,8 @@ item.qty+=delta;
 if(item.qty<=0){
 p.stock+=oldQty;
 state.cart=state.cart.filter(x=>x.productId!==id);
-renderSaleProducts();renderSaleCart();
+updateCartDisplayInPlace(id,0);
+renderSaleCart();
 }else{
 p.stock-=delta;
 const qtyInput=document.querySelector(`[data-qty-input="${id}"]`);
@@ -1247,7 +1319,8 @@ const oldQty=item.qty;
 if(newQty<=0){
 p.stock+=oldQty;
 state.cart=state.cart.filter(x=>x.productId!==id);
-renderSaleProducts();renderSaleCart();
+updateCartDisplayInPlace(id,0);
+renderSaleCart();
 }else{
 p.stock-=(newQty-oldQty);
 item.qty=newQty;
@@ -1274,13 +1347,16 @@ const nameEl=productCard.querySelector('.product-name');
 const stockEl=productCard.querySelector('.product-stock');
 const cartItem=state.cart.find(c=>c.productId===id);
 if(nameEl){
-if(cartItem)nameEl.innerHTML=p.name+' <span style="color:var(--primary);font-size:12px">(x'+cartItem.qty+')</span>';
+if(cartItem)nameEl.innerHTML=p.name+' <span class="qty-badge">(x'+cartItem.qty+')</span>';
 else nameEl.textContent=p.name;
 }
 if(stockEl){
 stockEl.textContent=p.stock+(p.unit==='g'?'g':'')+' disp.';
 stockEl.className='product-stock'+(p.stock<=0?' low':'');
 }
+productCard.classList.toggle('in-cart',!!cartItem);
+const minusEl=productCard.querySelector('.tap-minus');
+if(minusEl)minusEl.classList.toggle('tap-inactive',!cartItem);
 }}
 
 function minimizeSale(){
@@ -1405,7 +1481,7 @@ if(el)el.innerHTML=list.length?list.map(p=>{
 const cartItem=state.cart.find(c=>c.productId===p.id);
 const inCart=!!cartItem;
 const justAdded=state.lastAddedId===p.id;
-return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}" onclick="addToEditCart(${p.id})">${inCart?'<div class="product-remove" onclick="event.stopPropagation();removeFromEditCart('+p.id+')">'+SVG.close+'</div>':''}<div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span style="color:var(--primary);font-size:12px">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}</div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
+return`<div class="product-card ${inCart?'in-cart':''} ${justAdded?'just-added':''}" style="margin:8px 0" data-product-id="${p.id}"><div class="product-image" style="width:50px;height:50px">${state.photoCache[p.id]?`<img src="${state.photoCache[p.id]}">`:SVG.box}</div><div class="product-info"><div class="product-name">${p.name}${inCart?' <span class="qty-badge">(x'+cartItem.qty+')</span>':''}</div><span class="product-stock ${p.stock<=0?'low':''}">${p.stock}${p.unit==='g'?'g':''} disp.</span></div><div class="product-price">${formatMoney(p.salePrice,p.unit)}</div><div class="product-tap-layer"><div class="tap-half tap-minus ${inCart?'':'tap-inactive'}" onclick="event.stopPropagation();subtractFromEditCart(${p.id})"><span class="tap-icon tap-icon-minus">−</span></div><div class="tap-half tap-plus" onclick="event.stopPropagation();addToEditCart(${p.id})"><span class="tap-icon tap-icon-plus">+</span></div></div></div>`}).join(''):'<p style="text-align:center;padding:40px;color:var(--gray-400)">No hay productos</p>';
 if(state.lastAddedId){setTimeout(()=>{state.lastAddedId=null},350)}
 const catEl=document.getElementById('editCatPills');
 if(catEl)catEl.innerHTML=state.categories.map(c=>`<button class="category-pill ${state.selectedCategory===c?'active':''}" onclick="selectEditCategory('${c}')">${c}</button>`).join('')}
@@ -1440,12 +1516,20 @@ else{state.cart.push({productId:id,name:p.name,price:p.salePrice,costPrice:p.cos
 p.stock-=addQty;
 state.lastAddedId=id;
 if(p.stock<=0)playSound('warning');else playSound('add');
-renderEditProducts();renderEditCart()}
+updateEditDisplayInPlace(id,state.cart.find(x=>x.productId===id).qty);
+renderEditCart();
+const card=document.querySelector(`[data-product-id="${id}"]`);
+if(card){card.classList.remove('just-added');void card.offsetWidth;card.classList.add('just-added');setTimeout(()=>card.classList.remove('just-added'),350)}}
+
+function subtractFromEditCart(id){
+const item=state.cart.find(x=>x.productId===id);
+if(!item)return;
+updateEditQtyRT(id,-gStep(id))}
 
 function removeFromEditCart(id){
 const item=state.cart.find(x=>x.productId===id);
 const p=state.products.find(x=>x.id===id);
-if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');renderEditProducts();renderEditCart()}}
+if(item&&p){p.stock+=item.qty;state.cart=state.cart.filter(x=>x.productId!==id);playSound('remove');updateEditDisplayInPlace(id,0);renderEditCart()}}
 
 function updateEditQtyRT(id,delta){
 playSound('tick');
@@ -1454,7 +1538,7 @@ const p=state.products.find(x=>x.id===id);
 if(item&&p){
 const oldQty=item.qty;
 item.qty+=delta;
-if(item.qty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);renderEditProducts();renderEditCart()}
+if(item.qty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);updateEditDisplayInPlace(id,0);renderEditCart()}
 else{
 p.stock-=delta;
 const qtyInput=document.querySelector(`[data-qty-input="${id}"]`);
@@ -1478,7 +1562,7 @@ if(val===''||val===null)return;
 const newQty=parseInt(val);
 if(isNaN(newQty))return;
 const oldQty=item.qty;
-if(newQty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);renderEditProducts();renderEditCart()}
+if(newQty<=0){p.stock+=oldQty;state.cart=state.cart.filter(x=>x.productId!==id);updateEditDisplayInPlace(id,0);renderEditCart()}
 else{p.stock-=(newQty-oldQty);item.qty=newQty;updateEditDisplayInPlace(id,newQty)}}}
 
 function updateEditDisplayInPlace(id,qty){
@@ -1501,13 +1585,16 @@ const nameEl=productCard.querySelector('.product-name');
 const stockEl=productCard.querySelector('.product-stock');
 const cartItem=state.cart.find(c=>c.productId===id);
 if(nameEl){
-if(cartItem)nameEl.innerHTML=p.name+' <span style="color:var(--primary);font-size:12px">(x'+cartItem.qty+')</span>';
+if(cartItem)nameEl.innerHTML=p.name+' <span class="qty-badge">(x'+cartItem.qty+')</span>';
 else nameEl.textContent=p.name;
 }
 if(stockEl){
 stockEl.textContent=p.stock+(p.unit==='g'?'g':'')+' disp.';
 stockEl.className='product-stock'+(p.stock<=0?' low':'');
 }
+productCard.classList.toggle('in-cart',!!cartItem);
+const minusEl=productCard.querySelector('.tap-minus');
+if(minusEl)minusEl.classList.toggle('tap-inactive',!cartItem);
 }}
 
 function cancelEditSale(){

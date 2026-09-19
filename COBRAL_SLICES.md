@@ -102,7 +102,7 @@ locate code by function name, not by line.
 - Works for discontinued products (ids no longer in `state.products`).
 - **Test:** pick a seeded product with sales in 5+-item carts; each card shows it first; totals equal the Top row; switch Día→Mes updates list and totals.
 
-### [ ] A5 · Product card halves: left = −, right = +
+### [x] A5 · Product card halves: left = −, right = +
 - In the product pickers of **new sale** (`renderSaleProducts`), **edit sale** (`renderEditProducts`)
   and **edit debt** (`renderEditDebtProducts`), each card gets a semi-transparent layer split in two
   halves: left half shows **−**, right half shows **+**. Tap right = add `gStep(id)`; tap left = subtract
@@ -191,7 +191,14 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   hover states, keyboard (Enter/Escape). Gestures from A6 work with mouse drag (Pointer Events).
 - CSV export/import: web fallback (Blob download / file input) where the app uses Capacitor Filesystem/Share.
 - Service worker caches the shell so the web app also opens offline after the first visit.
-  **Known bug (pre-existing):** `sw.js` `cache.addAll` rejects ("Request failed") in the APK — a listed file doesn't exist. Fix here.
+  **Known bug (pre-existing):** `sw.js` `cache.addAll` rejects ("Request failed") in the APK — it lists
+  `./app_ventas_local_v5_2.html`, which doesn't exist, so the SW never installs (harmless today). Fixing it naively
+  would be dangerous: its cache-first strategy would serve a stale `index.html` after every APK update and would
+  intercept cross-origin Firestore/Auth requests. Required design:
+  - **Do not register the SW inside Capacitor** (`window.Capacitor?.isNativePlatform()`); unregister any existing one there.
+  - Web only: handle **same-origin GET only** (never touch `*.googleapis.com` / cross-origin); **network-first** for
+    navigations and `.html`/`.js`, cache fallback when offline; versioned cache name; precache `./`, `index.html`,
+    `cloud/config.js`, `cloud/cobral-cloud.js`.
 
 ### [ ] C2 · Hosting deploy (Opus — ask Jimbo before publishing)
 - `firebase.json` hosting (public = `www`, no-cache headers for html/js), deploy to `cobral-*.web.app`.
