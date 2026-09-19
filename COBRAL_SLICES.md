@@ -80,7 +80,7 @@ locate code by function name, not by line.
 - `openLocationModal` lists days Lunes → Domingo (display order only; keys stay 0–6 by `getDay()`).
 - **Test:** calendar for sep-2026 starts on Lu with 1 sep under Ma; week filter shows Monday–Sunday ranges; a sale made on a Sunday falls in the week that started the previous Monday; ubicación by day unchanged.
 
-### [ ] A3 · Pinned "Hoy" in every period selector (Ventas + Top)
+### [x] A3 · Pinned "Hoy" in every period selector (Ventas + Top)
 - In both `renderHome` and `renderSales`, the period selector gets a **sticky "Hoy" button** that
   never scrolls out of view (right edge, next to the calendar icon), for **día, semana, mes and año**.
 - Tap → jumps to the current period: día = today; semana = current Monday-week (and current

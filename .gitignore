@@ -12,3 +12,4 @@ android/local.properties
 firebase-debug.log
 tools/out/
 .env
+.claude/
