@@ -26,7 +26,7 @@ if (a[0] === '--swipe') {
   adb('shell', 'input', 'swipe', x, y, x + dx, y + dy, ms);
   console.log(`swipe ${a[2]} from ${x},${y}`);
 } else if (a[0] === '--text') {
-  adb('shell', 'input', 'text', a[1].replace(/ /g, '%s'));
+  adb('shell', 'input', 'text', a[1].replace(/([#&;()<>|*?'"$`\\])/g, '\\$1').replace(/ /g, '%s'));
   console.log(`typed ${a[1]}`);
 } else {
   const { x, y } = rectOf(a[0], +(a[1] || 0), +(a[2] || 0.5));

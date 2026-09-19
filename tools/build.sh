@@ -24,3 +24,11 @@ ls -la "$APK"
 "$ADB" shell am force-stop "$PKG"
 "$ADB" shell am start -n "$PKG/.MainActivity" >/dev/null
 echo "Installed and launched $PKG"
+
+# Wait until the WebView is debuggable and the splash is gone, so tests can start immediately.
+for i in $(seq 1 30); do
+  r=$(node tools/cdp.mjs "typeof state!=='undefined'&&!document.getElementById('splashScreen')" 2>/dev/null || true)
+  [[ "$r" == "true" ]] && { echo "App ready"; exit 0; }
+  sleep 1
+done
+echo "App did not become ready in 30s"; exit 1

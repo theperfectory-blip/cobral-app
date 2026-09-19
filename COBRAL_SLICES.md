@@ -58,7 +58,7 @@ locate code by function name, not by line.
 
 ## Phase A — APK improvements (release as **v5.6**)
 
-### [ ] A1 · Quick wins: "IVA incluido" + live totals on sales search
+### [x] A1 · Quick wins: "IVA incluido" + live totals on sales search
 - **Payment modal** (`renderPaymentModal`): the card-fee badges read `-1.3029% IVA incl.`;
   the summary row reads `Comisión (IVA incluido)`. Same wording in `openSaleDetail` summary and
   in Settings labels (`Comisión débito (IVA incluido)` / `Comisión crédito (IVA incluido)`).
@@ -185,6 +185,7 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   hover states, keyboard (Enter/Escape). Gestures from A6 work with mouse drag (Pointer Events).
 - CSV export/import: web fallback (Blob download / file input) where the app uses Capacitor Filesystem/Share.
 - Service worker caches the shell so the web app also opens offline after the first visit.
+  **Known bug (pre-existing):** `sw.js` `cache.addAll` rejects ("Request failed") in the APK — a listed file doesn't exist. Fix here.
 
 ### [ ] C2 · Hosting deploy (Opus — ask Jimbo before publishing)
 - `firebase.json` hosting (public = `www`, no-cache headers for html/js), deploy to `cobral-*.web.app`.
