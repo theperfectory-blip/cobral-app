@@ -113,7 +113,7 @@ locate code by function name, not by line.
 - Update in place (no full modal re-render) so the list doesn't jump while tapping quickly.
 - **Test:** real taps at 25 % and 75 % of a card width: qty +1/−1, stock ±1, cart total updates; gram product steps by its `gramStep`; − on qty 1 removes the line; dark mode legible.
 
-### [ ] A6 · Cart minimize / maximize by gesture only
+### [x] A6 · Cart minimize / maximize by gesture only
 - New-sale modal and payment modal: remove every **click** path to minimize (overlay tap, the
   "minimizar" strip, the header). Replace the strip text with a grabber pill.
   **Drag down** on the grabber/header → sheet follows the finger; release past ~80 px (or a fast
