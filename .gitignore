@@ -1,0 +1,14 @@
+node_modules/
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/.idea/caches/
+android/.idea/workspace.xml
+android/local.properties
+*.apk
+*.aab
+.firebase/
+firebase-debug.log
+tools/out/
+.env

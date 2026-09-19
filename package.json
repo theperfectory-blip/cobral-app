@@ -1,0 +1,21 @@
+{
+  "name": "cobral",
+  "version": "5.2.0",
+  "description": "Sistema de registro de ventas y gestión de inventario",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'No build needed - static HTML app'",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android"
+  },
+  "author": "Jimbo",
+  "license": "PRIVATE",
+  "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/share": "^8.0.1"
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cobral</string>
+    <string name="title_activity_main">Cobral</string>
+    <string name="package_name">cl.cobral.ventas</string>
+    <string name="custom_url_scheme">cl.cobral.ventas</string>
+</resources>

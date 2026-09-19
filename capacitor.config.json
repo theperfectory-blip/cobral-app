@@ -1,0 +1,17 @@
+{
+  "appId": "cl.cobral.ventas",
+  "appName": "Cobral",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#1e3a5f"
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK"
+    }
+  }
+}
