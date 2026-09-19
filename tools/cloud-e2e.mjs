@@ -18,6 +18,7 @@ import { initializeFirestore, memoryLocalCache, connectFirestoreEmulator, doc, g
 import { createClient } from '../cloud-src/cobral-cloud.js';
 
 const EMULATOR_HOST = '127.0.0.1';
+const PUSH_DEBOUNCE_WAIT_MS = 1900; // must clear cobral-cloud.js's ~1.5s push() debounce
 
 // Fake but well-shaped config: the emulators don't validate the API key or that the project is
 // real, they only need a projectId that matches `--project cobral-app` on the command line.
@@ -157,6 +158,51 @@ async function main() {
     b.client.push(snapshotWithoutSale);
 
     await waitUntil(() => a.rec.findRemote('sales', (e) => e.deletes.includes(saleId)), { timeout: 8000, label: 'client A onRemote delete for the sale' });
+  });
+
+  // ---------------------------------------------------------------------
+  // Offline-first: client A goes offline, pushes a write, and must not hang or re-send it.
+  // ---------------------------------------------------------------------
+  const offlineSaleId = Date.now() + 500;
+  const offlineSaleDate = new Date().toISOString(); // fixed on purpose: built once and reused so
+  // the two "identical" pushes below produce byte-identical docs (a fresh `new Date()` per call
+  // would make hashDoc() see a "change" every time and defeat the very thing being tested).
+  function buildOfflineSnapshot() {
+    return sampleSnapshot({
+      sales: [{ id: offlineSaleId, numVenta: 2, items: [{ id: 1, name: 'Coca 350', qty: 1, price: 1000 }], subtotal: 1000, fee: 0, finalAmount: 1000, totalCost: 600, margin: 400, marginPct: 40, paymentMethod: 'efectivo', date: offlineSaleDate, location: 'Local', isAbono: false }],
+      products: [{ id: productId, name: 'Coca 350', costPrice: 600, salePrice: 1000, stock: 10, unit: 'u', category: 'Bebidas', image: null, offers: [], gramStep: 250 }],
+    });
+  }
+
+  await step('offline: A queues a write in the local cache and reports offline/pending (not stuck forever)', async () => {
+    await a.client._network(false);
+
+    const statsBefore = a.client._debugStats();
+    a.client.push(buildOfflineSnapshot());
+
+    // The batch is dispatched (commit() called) well before any server round-trip could
+    // complete — this is exactly the "shadow updates before the ack" fix being tested.
+    await waitUntil(() => a.client._debugStats().writesDispatched > statsBefore.writesDispatched, { timeout: 5000, label: 'offline push to dispatch its batch locally' });
+
+    assert.ok(['offline', 'pending'].includes(a.client.status()), `status should be 'offline' or 'pending' while disconnected with a write queued, got '${a.client.status()}'`);
+  });
+
+  await step('offline: a repeat push() with no real changes dispatches zero additional writes', async () => {
+    const statsBefore = a.client._debugStats();
+    // Byte-identical to the previous step's snapshot: the shadow was already updated
+    // optimistically, so this diff must come back empty and flushPush must return without
+    // calling dispatchOps again.
+    a.client.push(buildOfflineSnapshot());
+    await sleep(PUSH_DEBOUNCE_WAIT_MS);
+
+    assert.equal(a.client._debugStats().writesDispatched, statsBefore.writesDispatched, 'an unchanged push must not dispatch new writes, offline or not (this was the bug: stale-shadow re-sends)');
+  });
+
+  await step('offline: reconnecting flushes the queued write through to client B and A settles to synced', async () => {
+    await a.client._network(true);
+
+    await waitUntil(() => b.rec.findRemote('sales', (e) => e.upserts.some((d) => d.id === offlineSaleId)), { timeout: 10000, label: 'client B to receive the sale queued while A was offline' });
+    await waitUntil(() => a.client.status() === 'synced', { timeout: 10000, label: "client A status to settle to 'synced' once its queued commit is acked" });
   });
 
   // ---------------------------------------------------------------------

@@ -35,6 +35,16 @@
 //   push(snapshot)
 //     Fire-and-forget. Debounces ~1.5s, diffs `snapshot` against the per-uid shadow, and writes
 //     only the changed docs in batches of <= 450 ops. Safe to call on every saveData().
+//     IMPORTANT (offline-first): with persistentLocalCache, a batch's commit() promise does NOT
+//     reject while offline — the write lands in Firestore's local persistent queue synchronously
+//     and commit() simply stays pending until the server eventually acks it (possibly after an
+//     app restart). So the shadow is updated the moment commit() is *called*, not once it
+//     resolves; otherwise every push() while offline would recompute and re-enqueue the exact
+//     same docs forever. status() reflects the outstanding commits: 'pending' while online with
+//     writes in flight, 'offline' while navigator.onLine is false (or network was disabled via
+//     the test-only _network() hook) with writes in flight, 'synced' once every commit has been
+//     acked, 'error' if the backend actually rejects a write (e.g. permission-denied) — in that
+//     case the affected doc's shadow entry is rolled back so the next push() retries it.
 //     snapshot shape:
 //       {
 //         sales: Array<{id:number, ...}>, products: Array<{id:number, ...}>,
@@ -77,6 +87,8 @@ import {
   persistentMultipleTabManager,
   memoryLocalCache,
   connectFirestoreEmulator,
+  enableNetwork,
+  disableNetwork,
   collection,
   doc,
   getDoc,
@@ -198,12 +210,41 @@ export function createClient() {
 
   let pendingSnapshot = null;
   let debounceTimer = null;
-  let onlineRetryArmed = false;
+
+  // Offline-first write tracking: a batch.commit() promise does not settle until the server
+  // acks it, but the write is already durable in Firestore's local queue the instant commit()
+  // is called. inFlightCommits counts commits we've called but that haven't settled yet, so
+  // status() can report 'pending'/'offline' correctly without waiting on the network.
+  let inFlightCommits = 0;
+  let manualOffline = false; // set by the test-only _network() hook (tools/cloud-e2e.mjs)
+
+  // Test-only instrumentation (not part of the documented public API): lets tools/cloud-e2e.mjs
+  // assert "no new writes were dispatched" without reaching into Firestore internals.
+  const debugStats = { writesDispatched: 0, commitsInFlight: 0 };
 
   function setStatus(next) {
     if (next === currentStatus) return;
     currentStatus = next;
     try { onStatusCb(currentStatus); } catch (e) { /* caller's problem */ }
+  }
+
+  function currentlyOnline() {
+    if (manualOffline) return false;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') return navigator.onLine;
+    } catch (e) { /* ignore */ }
+    return true; // Node / unknown environment: assume online
+  }
+
+  /** Re-derives status() from the current in-flight-commit count + connectivity. Never
+   *  overrides 'error' or 'signed-out' on its own — those are set explicitly at their source. */
+  function refreshStatus() {
+    if (!currentUid) { setStatus('signed-out'); return; }
+    if (inFlightCommits > 0) {
+      setStatus(currentlyOnline() ? 'pending' : 'offline');
+    } else if (currentStatus !== 'error') {
+      setStatus('synced');
+    }
   }
 
   function shadowKey(uid) {
@@ -277,6 +318,10 @@ export function createClient() {
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('online', () => {
         if (pendingSnapshot) scheduleFlush(0);
+        if (inFlightCommits > 0) refreshStatus();
+      });
+      window.addEventListener('offline', () => {
+        if (inFlightCommits > 0) refreshStatus();
       });
     }
 
@@ -286,7 +331,7 @@ export function createClient() {
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
         attachListeners(currentUid);
-        setStatus('synced');
+        refreshStatus();
       } else {
         currentUid = null;
         shadow = emptyShadow();
@@ -369,26 +414,24 @@ export function createClient() {
     scheduleFlush(PUSH_DEBOUNCE_MS);
   }
 
-  async function writeOpsInBatches(uid, ops) {
-    for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
-      const batch = writeBatch(db);
-      for (const op of ops.slice(i, i + MAX_BATCH_OPS)) batch.set(op.ref, op.data);
-      await batch.commit();
-    }
+  /** Removes one doc's entry from the shadow (upsert or tombstone alike) so a later diff() sees
+   *  it as changed again and retries it. Used to roll back a batch whose commit was rejected. */
+  function forgetShadowEntry(col, id) {
+    shadow = col === 'settings' ? updateShadowSettings(shadow, null) : updateShadowForCollection(shadow, col, [], [id]);
   }
 
   function buildOpsFromDiff(uid, changes) {
     const ops = [];
     for (const col of COLLECTIONS) {
       for (const d of changes[col].upserts) {
-        ops.push({ ref: docRef(uid, col, d.id), data: { ...toRemoteData(d, device), _updatedAt: serverTimestamp() } });
+        ops.push({ collectionName: col, docId: String(d.id), ref: docRef(uid, col, d.id), data: { ...toRemoteData(d, device), _updatedAt: serverTimestamp() } });
       }
       for (const id of changes[col].deletes) {
-        ops.push({ ref: docRef(uid, col, id), data: { ...toTombstone(id, device), _updatedAt: serverTimestamp() } });
+        ops.push({ collectionName: col, docId: String(id), ref: docRef(uid, col, id), data: { ...toTombstone(id, device), _updatedAt: serverTimestamp() } });
       }
     }
     if (changes.settings.upsert) {
-      ops.push({ ref: settingsRef(uid), data: { ...toRemoteData(changes.settings.upsert, device), _updatedAt: serverTimestamp() } });
+      ops.push({ collectionName: 'settings', docId: 'settings', ref: settingsRef(uid), data: { ...toRemoteData(changes.settings.upsert, device), _updatedAt: serverTimestamp() } });
     }
     return ops;
   }
@@ -400,6 +443,39 @@ export function createClient() {
     if (changes.settings.upsert) shadow = updateShadowSettings(shadow, changes.settings.upsert);
   }
 
+  /**
+   * Chunks `ops` into batches of <= MAX_BATCH_OPS and calls commit() on each WITHOUT awaiting
+   * the server's ack — the write is already durable in Firestore's local queue as soon as
+   * commit() returns, which is what the shadow must reflect (see the offline-first note in the
+   * push() doc comment up top). Callers apply the optimistic shadow update themselves *before*
+   * calling this, then this function only has to roll a specific doc back out of the shadow if
+   * its batch is ultimately rejected (e.g. permission-denied) — never blocks its caller.
+   */
+  function dispatchOps(uid, ops) {
+    for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
+      const chunk = ops.slice(i, i + MAX_BATCH_OPS);
+      const batch = writeBatch(db);
+      for (const op of chunk) batch.set(op.ref, op.data);
+
+      inFlightCommits++;
+      debugStats.commitsInFlight = inFlightCommits;
+      debugStats.writesDispatched += chunk.length;
+
+      batch.commit().then(() => {
+        inFlightCommits--;
+        debugStats.commitsInFlight = inFlightCommits;
+        refreshStatus();
+      }).catch((err) => {
+        inFlightCommits--;
+        debugStats.commitsInFlight = inFlightCommits;
+        for (const op of chunk) forgetShadowEntry(op.collectionName, op.docId);
+        persistShadow(uid);
+        setStatus('error');
+      });
+    }
+    refreshStatus();
+  }
+
   async function flushPush() {
     debounceTimer = null;
     if (!currentUid || !pendingSnapshot) return;
@@ -408,22 +484,17 @@ export function createClient() {
     pendingSnapshot = null;
 
     const changes = diff(shadow, snapshot);
-    if (isDiffEmpty(changes)) { setStatus('synced'); return; }
+    if (isDiffEmpty(changes)) { refreshStatus(); return; }
 
     const ops = buildOpsFromDiff(uid, changes);
-    try {
-      await writeOpsInBatches(uid, ops);
-      applyDiffToShadow(changes);
-      persistShadow(uid);
-      setStatus('synced');
-    } catch (err) {
-      pendingSnapshot = snapshot; // keep it queued so a later push()/online event retries
-      if (err && (err.code === 'unavailable' || err.code === 'failed-precondition')) {
-        setStatus('offline');
-      } else {
-        setStatus('error');
-      }
-    }
+
+    // Optimistic: the local cache already applied these writes the instant we build the batch
+    // below, long before commit() resolves. Update + persist the shadow right away so a device
+    // that's offline doesn't recompute (and re-enqueue) this exact same diff on every push().
+    applyDiffToShadow(changes);
+    persistShadow(uid);
+
+    dispatchOps(uid, ops);
   }
 
   // -------------------------------------------------------------------------
@@ -451,22 +522,29 @@ export function createClient() {
   async function firstSync(localSnapshot) {
     if (!currentUid) throw new Error('firstSync() requires a signed-in user');
     const uid = currentUid;
+    // This read is the one part of firstSync that genuinely needs the network; it's only ever
+    // called right after a successful sign-in/sign-up, so it's expected to be online. If the
+    // connection drops mid-read, getDocs()/getDoc() reject and firstSync rejects with that error
+    // for the caller to show — it does not hang indefinitely.
     const remote = await fetchRemoteSnapshot(uid);
     const { merged, upload } = mergeFirstSync(localSnapshot, remote);
 
     const uploadChanges = { settings: { upsert: upload.settings || null } };
     for (const col of COLLECTIONS) uploadChanges[col] = { upserts: upload[col] || [], deletes: [] };
 
-    if (!isDiffEmpty(uploadChanges)) {
-      const ops = buildOpsFromDiff(uid, uploadChanges);
-      await writeOpsInBatches(uid, ops);
-    }
-
     // The shadow must reflect the FULL merged snapshot (local- and remote-origin docs alike) so
     // the upcoming onSnapshot initial-fetch and the next push() don't re-send anything.
     shadow = buildShadowFromSnapshot(merged);
     persistShadow(uid);
-    setStatus('synced');
+
+    // Same offline-first rule as push(): dispatch the upload without awaiting the server's ack,
+    // so firstSync resolves right after the writes are queued locally instead of hanging for
+    // however long it takes the network to come back (e.g. if it drops right after login).
+    if (!isDiffEmpty(uploadChanges)) {
+      dispatchOps(uid, buildOpsFromDiff(uid, uploadChanges));
+    } else {
+      refreshStatus();
+    }
     return merged;
   }
 
@@ -515,6 +593,22 @@ export function createClient() {
     return currentStatus;
   }
 
+  // ---------------------------------------------------------------------------
+  // Test-only hooks (NOT part of the documented public API above). Used by
+  // tools/cloud-e2e.mjs to simulate connectivity loss and to count dispatched writes without
+  // reaching into Firestore internals. B3/index.html must never call these.
+  // ---------------------------------------------------------------------------
+
+  async function _network(enabled) {
+    manualOffline = !enabled;
+    if (db) { try { await (enabled ? enableNetwork(db) : disableNetwork(db)); } catch (e) { /* ignore */ } }
+    refreshStatus();
+  }
+
+  function _debugStats() {
+    return { ...debugStats };
+  }
+
   return {
     init,
     signIn,
@@ -525,6 +619,8 @@ export function createClient() {
     push,
     firstSync,
     status,
+    _network,
+    _debugStats,
   };
 }
 
