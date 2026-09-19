@@ -155,7 +155,7 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   `match /users/{uid}/{document=**} { allow read, write: if request.auth.uid == uid; }`.
 - Commit `firebase.json`, `.firebaserc`, `firebase/firestore.rules`. Web config goes in `www/cloud/config.js`.
 
-### [ ] B2 · Cloud module (Sonnet — new files only, can run in parallel with Phase A)
+### [x] B2 · Cloud module (Sonnet — new files only, can run in parallel with Phase A)
 - `npm i -D firebase esbuild`; bundle Auth + Firestore into `www/vendor/firebase.js` (local file, so the APK
   boots offline — **no CDN**). Firestore with `persistentLocalCache` (multi-tab on web).
 - `www/cloud/cobral-cloud.js` exposing `window.CobralCloud = { init, signIn, signUp, signOut, resetPassword, onUser, pushChanges, … }`.
@@ -163,8 +163,14 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
   (categories, locations, fees, userName). Every doc carries `updatedAt` (server timestamp) and deletions
   are **tombstones** (`deleted:true`) so offline devices converge. Last-write-wins per document.
 - Photos stay device-local in this phase (Firebase Storage requires the Blaze plan).
+- **Done 2026-09-19:** `cloud-src/` (source + 23 unit tests), bundle `www/cloud/cobral-cloud.js` (682 KB min), e2e 10/10 on
+  emulators incl. offline queueing (`npm run e2e:cloud`, needs JAVA_HOME + PATH + the JAVA_TOOL_OPTIONS workaround).
+  API: `init/signIn/signUp/signOut/resetPassword/currentUser/push/firstSync/status` — see header of `cloud-src/cobral-cloud.js`.
 
 ### [ ] B3 · Wire sync into the app (Sonnet, `index.html`)
+- Sync `settings` WITHOUT device preferences: `darkMode` and `soundEnabled` stay per-device.
+- `numVenta` can collide when two devices sell offline: after merges, keep numbers unique (later sale by date gets the next free number) and never renumber existing unique tickets.
+- Known limitation to tell Jimbo: `stock` on products is last-write-wins — two devices selling the same product at the same time can lose one decrement.
 - Settings gets **Cuenta**: login / crear cuenta / recuperar contraseña / cerrar sesión, sync status
   (`Sincronizado`, `Pendiente (sin conexión)`, error). Login is **optional** in the APK.
 - `saveData()` stays the single write path: after writing localStorage it diffs against the last synced
