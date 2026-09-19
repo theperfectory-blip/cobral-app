@@ -90,7 +90,7 @@ locate code by function name, not by line.
 - Also add a "Hoy" action inside the date-picker calendar modal.
 - **Test:** in Ventas and Top, for each of the 4 modes: select an old period, tap Hoy → current period active and visible; Hoy button visible after scrolling the chips fully left.
 
-### [ ] A4 · Top ventas → drill into a product's sales
+### [x] A4 · Top ventas → drill into a product's sales
 - Tapping a product row in Top ventas opens a modal: product name, the active period label
   (e.g. `Semana 15 – 21 sep`), active location filter, total units and revenue for that product.
 - A segmented control **Día / Semana / Mes / Año** inside the modal switches `state.homeFilterPeriod`
