@@ -7,7 +7,10 @@
     "build": "echo 'No build needed - static HTML app'",
     "cap:add": "npx cap add android",
     "cap:sync": "npx cap sync",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "build:cloud": "esbuild cloud-src/cobral-cloud.js --bundle --minify --format=iife --target=es2019 --global-name=__cobralCloudModule --outfile=www/cloud/cobral-cloud.js",
+    "test:cloud": "node --test cloud-src/sync-core.test.js",
+    "e2e:cloud": "firebase emulators:exec --only auth,firestore --project cobral-app \"node tools/cloud-e2e.mjs\""
   },
   "author": "Jimbo",
   "license": "PRIVATE",
@@ -17,5 +20,9 @@
     "@capacitor/core": "^8.1.0",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "firebase": "^12.19.0"
   }
 }
