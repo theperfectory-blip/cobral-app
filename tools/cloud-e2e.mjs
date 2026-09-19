@@ -276,10 +276,172 @@ async function main() {
   });
 
   // ---------------------------------------------------------------------
+  // B4: three-way stock merge (COBRAL_SLICES.md "Stock merge by deltas").
+  // This harness re-implements, byte-for-byte, the same merge formula www/index.html's
+  // applyRemoteChange() uses for collection 'products': if the local product exists and the
+  // incoming upsert carries a numeric _baseStock, merged.stock = upsert.stock + (local.stock -
+  // upsert._baseStock); otherwise (new product, or base unknown) take the remote doc as-is.
+  // ---------------------------------------------------------------------
+
+  function applyRemoteMergeLikeApp(localState, change) {
+    if (change.collection !== 'products') return;
+    const arr = localState.products;
+    for (const doc of change.upserts) {
+      const i = arr.findIndex((p) => p.id === doc.id);
+      const merged = { ...doc };
+      const hasBase = typeof doc._baseStock === 'number';
+      delete merged._baseStock;
+      if (i >= 0 && hasBase) merged.stock = doc.stock + (arr[i].stock - doc._baseStock);
+      if (i >= 0) arr[i] = merged; else arr.push(merged);
+    }
+    for (const id of change.deletes || []) {
+      const i = arr.findIndex((p) => p.id === id);
+      if (i >= 0) arr.splice(i, 1);
+    }
+  }
+
+  function snapshotFromState(localState) {
+    return sampleSnapshot({ products: localState.products });
+  }
+
+  // A tiny "app loop" stand-in: processes every NEW 'products' event touching `productId`
+  // recorded on `clientObj.rec` since `cursor.i`, merging + re-pushing exactly like
+  // onCloudRemote -> applyRemoteChange -> finishRemoteApply -> saveData() would in the app.
+  // Safe to call repeatedly (e.g. from inside a waitUntil poll): already-seen events are never
+  // reprocessed because `cursor.i` only advances forward.
+  function processNewProductEvents(clientObj, productId, cursor) {
+    let n = 0;
+    while (cursor.i < clientObj.rec.remoteEvents.length) {
+      const ev = clientObj.rec.remoteEvents[cursor.i++];
+      if (ev.collection === 'products' && ev.upserts.some((d) => d.id === productId)) {
+        applyRemoteMergeLikeApp(clientObj.state, ev);
+        clientObj.client.push(snapshotFromState(clientObj.state));
+        n++;
+      }
+    }
+    return n;
+  }
+
+  const stockEmail = uniqueEmail('stock');
+  const g = newClient(); // "device A" for the stock-merge scenario
+  const h = newClient(); // "device B"
+  const stockProductId = Date.now() + 3000;
+  const gCursor = { i: 0 };
+  const hCursor = { i: 0 };
+
+  await step('B4 setup: two devices converge on one product starting at stock 10', async () => {
+    const su = await g.client.signUp(stockEmail, password);
+    assert.equal(su.ok, true, JSON.stringify(su));
+    await waitUntil(() => g.client.currentUser() !== null, { label: 'device A auth state to settle' });
+    const mergedG = await g.client.firstSync(sampleSnapshot({
+      products: [{ id: stockProductId, name: 'Stock item', costPrice: 100, salePrice: 200, stock: 10, unit: 'u', category: 'General', image: null, offers: [], gramStep: 250 }],
+    }));
+    g.state = { products: mergedG.products.map((p) => ({ ...p })) };
+    // firstSync's upload is fire-and-forget (offline-first: it doesn't await the server ack).
+    // Wait for it to actually land before device B reads the cloud, otherwise B's firstSync()
+    // (a one-shot getDocs) can race ahead of A's write and see an empty products collection.
+    await waitUntil(() => g.client.status() === 'synced', { timeout: 10000, label: "device A's initial upload to be acked before device B signs in" });
+
+    const si = await h.client.signIn(stockEmail, password);
+    assert.equal(si.ok, true, JSON.stringify(si));
+    await waitUntil(() => h.client.currentUser() !== null, { label: 'device B auth state to settle' });
+    const mergedH = await h.client.firstSync(sampleSnapshot());
+    h.state = { products: mergedH.products.map((p) => ({ ...p })) };
+    assert.equal(h.state.products.find((p) => p.id === stockProductId).stock, 10, 'device B must start from the same cloud stock');
+
+    // Let any in-flight onSnapshot listener noise from the firstSync race settle before we start
+    // counting events, so the concurrent-decrement step below only sees the events it triggers.
+    await sleep(500);
+    gCursor.i = g.rec.remoteEvents.length;
+    hCursor.i = h.rec.remoteEvents.length;
+  });
+
+  // The concurrency pattern that matters here is exactly the one from the bug report: device B's
+  // sale finishes (decrement + push) while device A's own sale (a separate, independent -2) is
+  // still open. Neither device has SEEN the other's change before it pushes its own raw local
+  // value: B pushes without ever knowing about A, and A's own push (its raw, unmerged -2) is
+  // dispatched before A folds in B's update — exactly mirroring www/index.html's payment flow
+  // (saveData() runs before flushPendingRemote(), see line ~1492). The critical correctness
+  // detail (and the reason this bug existed) is _timing_ of when `_baseStock` gets captured: it
+  // must be frozen at the moment the module's onSnapshot listener processes the incoming remote
+  // doc — i.e. BEFORE device A's own push has a chance to advance its shadowStock — not
+  // recomputed later when the app finally gets around to applying the queued change. If A's own
+  // push observes/advances its shadow first, the base is lost and the merge degenerates into
+  // last-write-wins (the very bug B4 fixes). So this harness captures A's queued event the
+  // instant it arrives, exactly like state.pendingRemote does in the app.
+  await step("B4: device B sells 1 and pushes; device A's own sale (sells 2) is still open, so it observes and queues B's update", async () => {
+    h.state.products.find((p) => p.id === stockProductId).stock -= 1; // B's local decrement, pushed immediately (a clean, fast sale)
+    h.client.push(snapshotFromState(h.state));
+
+    g.state.products.find((p) => p.id === stockProductId).stock -= 2; // A's local decrement, reserved but NOT pushed yet (sale still open)
+
+    const queued = await waitUntil(() => {
+      return g.rec.remoteEvents.slice(gCursor.i).find((e) => e.collection === 'products' && e.upserts.some((d) => d.id === stockProductId));
+    }, { timeout: 8000, label: "device A to observe (and queue) device B's push while its own sale is open" });
+    gCursor.i = g.rec.remoteEvents.indexOf(queued) + 1;
+    assert.equal(queued.upserts.find((d) => d.id === stockProductId)._baseStock, 10, "the queued event's _baseStock must be frozen at the pre-sale cloud value (10), captured before device A's own push ever touches its shadow");
+    g.queuedRemote = queued; // mirrors state.pendingRemote in www/index.html
+  });
+
+  await step('B4: device A completes its sale (pushes the raw, unmerged local decrement first — exactly like saveData() before flushPendingRemote())', async () => {
+    g.client.push(snapshotFromState(g.state)); // pushes A's raw local stock (8), momentarily clobbering B's 9 in Firestore
+    await waitUntil(() => g.client.status() === 'synced', { timeout: 10000, label: "device A's raw sale push to be acked" });
+  });
+
+  await step('B4: device A applies the queued merge (flushPendingRemote-equivalent) and pushes the correction; both devices converge to 7', async () => {
+    applyRemoteMergeLikeApp(g.state, g.queuedRemote);
+    assert.equal(g.state.products.find((p) => p.id === stockProductId).stock, 7, 'device A must merge to base(10) - a(2) - b(1) = 7');
+    g.client.push(snapshotFromState(g.state)); // finishRemoteApply()'s saveData(), pushing the corrected value
+
+    await waitUntil(() => {
+      processNewProductEvents(h, stockProductId, hCursor);
+      return h.state.products.find((p) => p.id === stockProductId).stock === 7;
+    }, { timeout: 10000, label: "device B to receive device A's correction and converge to 7" });
+  });
+
+  await step('B4: both devices converge to 7 in Firestore too (drain cross-echoes to quiescence)', async () => {
+    await waitUntil(() => {
+      const processed = processNewProductEvents(g, stockProductId, gCursor) + processNewProductEvents(h, stockProductId, hCursor);
+      return processed === 0 && g.client.status() === 'synced' && h.client.status() === 'synced';
+    }, { timeout: 10000, label: 'stock merge to quiesce with both devices synced' });
+    assert.equal(g.state.products.find((p) => p.id === stockProductId).stock, 7);
+    assert.equal(h.state.products.find((p) => p.id === stockProductId).stock, 7);
+  });
+
+  await step('B4: a remote update with no local change yields exactly the remote value (no double counting)', async () => {
+    g.state.products.find((p) => p.id === stockProductId).stock = 20; // e.g. a restock, no concurrent local change on B
+    g.client.push(snapshotFromState(g.state));
+    await waitUntil(() => {
+      const processed = processNewProductEvents(h, stockProductId, hCursor);
+      return processed > 0;
+    }, { timeout: 8000, label: 'device B to receive the restock' });
+    assert.equal(h.state.products.find((p) => p.id === stockProductId).stock, 20, 'no local delta on B means the merge must equal the remote value exactly');
+
+    await waitUntil(() => {
+      const processed = processNewProductEvents(g, stockProductId, gCursor) + processNewProductEvents(h, stockProductId, hCursor);
+      return processed === 0 && g.client.status() === 'synced' && h.client.status() === 'synced';
+    }, { timeout: 10000, label: 'restock to quiesce with both devices synced' });
+  });
+
+  await step('B4: after convergence, no further writes ping-pong (write counters stay flat for 5s)', async () => {
+    const gBefore = g.client._debugStats().writesDispatched;
+    const hBefore = h.client._debugStats().writesDispatched;
+    await sleep(5000);
+    assert.equal(processNewProductEvents(g, stockProductId, gCursor), 0, 'no new remote product events should have arrived for device A');
+    assert.equal(processNewProductEvents(h, stockProductId, hCursor), 0, 'no new remote product events should have arrived for device B');
+    assert.equal(g.client._debugStats().writesDispatched, gBefore, 'device A must not keep pushing once converged');
+    assert.equal(h.client._debugStats().writesDispatched, hBefore, 'device B must not keep pushing once converged');
+    assert.equal(g.state.products.find((p) => p.id === stockProductId).stock, 20);
+    assert.equal(h.state.products.find((p) => p.id === stockProductId).stock, 20);
+  });
+
+  // ---------------------------------------------------------------------
   await a.client.signOut();
   await b.client.signOut();
   await c.client.signOut();
   await d.client.signOut();
+  await g.client.signOut();
+  await h.client.signOut();
 }
 
 main()

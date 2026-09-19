@@ -18,6 +18,8 @@ import {
   diff,
   isDiffEmpty,
   mergeFirstSync,
+  stockMapFromProducts,
+  attachBaseStock,
 } from './sync-core.js';
 
 function emptySnapshot() {
@@ -251,4 +253,86 @@ test('mergeFirstSync leaves collections independent (debts vs sales do not cross
   assert.equal(upload.sales.length, 1);
   assert.equal(merged.debts.length, 1);
   assert.equal(upload.debts.length, 0, 'remote-only debt must not be re-uploaded');
+});
+
+// ---------------------------------------------------------------------------
+// B4: shadowStock / _baseStock (three-way merge of products[].stock)
+// ---------------------------------------------------------------------------
+
+test('stockMapFromProducts keys by String(id), ignores products without a numeric stock', () => {
+  const map = stockMapFromProducts([
+    { id: 1, stock: 10 },
+    { id: 2, stock: 0 },
+    { id: 3 }, // no stock field
+    { id: 4, stock: 'lots' }, // non-numeric, ignored
+  ]);
+  assert.deepEqual(map, { 1: 10, 2: 0 });
+});
+
+test('stockMapFromProducts of an empty/undefined list is an empty map', () => {
+  assert.deepEqual(stockMapFromProducts([]), {});
+  assert.deepEqual(stockMapFromProducts(undefined), {});
+});
+
+test('emptyShadow has an empty stock map', () => {
+  assert.deepEqual(emptyShadow().stock, {});
+});
+
+test('buildShadowFromSnapshot seeds shadow.stock from the snapshot products', () => {
+  const snap = emptySnapshot();
+  snap.products = [{ id: 1, stock: 10 }, { id: 2, stock: 5 }];
+  const shadow = buildShadowFromSnapshot(snap);
+  assert.deepEqual(shadow.stock, { 1: 10, 2: 5 });
+});
+
+test('attachBaseStock attaches the known shadow value as _baseStock, leaves unknown ids alone', () => {
+  const shadowStock = { 1: 10, 2: 7 };
+  const upserts = [{ id: 1, stock: 8, name: 'A' }, { id: 3, stock: 4, name: 'C' }];
+  const out = attachBaseStock(shadowStock, upserts);
+  assert.equal(out[0]._baseStock, 10);
+  assert.equal(out[0].stock, 8);
+  assert.ok(!('_baseStock' in out[1]), 'unknown base (new product) must not get a _baseStock field');
+  // Pure: must not mutate the input docs.
+  assert.ok(!('_baseStock' in upserts[0]));
+});
+
+test('attachBaseStock of an empty/undefined upsert list is an empty array', () => {
+  assert.deepEqual(attachBaseStock({ 1: 5 }, []), []);
+  assert.deepEqual(attachBaseStock({ 1: 5 }, undefined), []);
+});
+
+test('updateShadowForCollection refreshes shadow.stock for products (upserts and deletes)', () => {
+  let shadow = buildShadowFromSnapshot({ ...emptySnapshot(), products: [{ id: 1, stock: 10 }, { id: 2, stock: 5 }] });
+  shadow = updateShadowForCollection(shadow, 'products', [{ id: 1, stock: 8 }, { id: 3, stock: 20 }], [2]);
+  assert.deepEqual(shadow.stock, { 1: 8, 3: 20 });
+});
+
+test('updateShadowForCollection leaves shadow.stock untouched for non-product collections', () => {
+  let shadow = buildShadowFromSnapshot({ ...emptySnapshot(), products: [{ id: 1, stock: 10 }] });
+  shadow = updateShadowForCollection(shadow, 'sales', [{ id: 99, total: 1 }], []);
+  assert.deepEqual(shadow.stock, { 1: 10 });
+});
+
+test('B4 scenario: concurrent decrements on two devices converge via the merge formula base+remoteDelta+localDelta', () => {
+  // Both devices start from the same known cloud stock (base = 10).
+  const base = 10;
+  const shadowStockA = { 42: base };
+  // Device A decrements by 2 locally (open sale), device B decrements by 1 and pushes first.
+  const localStockA = base - 2; // A's in-progress local stock
+  const remoteUpsertFromB = { id: 42, stock: base - 1 }; // what B pushed
+  const [withBase] = attachBaseStock(shadowStockA, [remoteUpsertFromB]);
+  assert.equal(withBase._baseStock, base);
+  // The app applies the same formula index.html's applyRemoteChange uses:
+  const merged = withBase.stock + (localStockA - withBase._baseStock);
+  assert.equal(merged, base - 3, 'both decrements must be reflected: base - a - b');
+});
+
+test('B4 scenario: remote update with no local change yields exactly the remote stock (no double counting)', () => {
+  const base = 10;
+  const shadowStock = { 42: base };
+  const remoteUpsert = { id: 42, stock: base - 1 };
+  const [withBase] = attachBaseStock(shadowStock, [remoteUpsert]);
+  const localStock = base; // no local change at all
+  const merged = withBase.stock + (localStock - withBase._baseStock);
+  assert.equal(merged, base - 1, 'no local delta means the merge must equal the remote value exactly');
 });

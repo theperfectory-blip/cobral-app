@@ -1795,7 +1795,7 @@ function buildCloudSnapshot(){return{sales:state.sales,products:state.products.m
 function saleOrEditInProgress(){return!!(state.cart.length||state.saleMinimized||state.editingSaleId||state.editingDebtId)}
 function applyRemoteChange(change){const collection=change.collection,upserts=change.upserts||[],deletes=change.deletes||[];if(collection==='settings'){const s=upserts[0];if(s){if('categories'in s)state.categories=s.categories;if('locations'in s)state.locations=s.locations;if('userName'in s)state.userName=s.userName;if('debitFee'in s)state.debitFee=s.debitFee;if('creditFee'in s)state.creditFee=s.creditFee}return}
 const arr=state[collection];if(!Array.isArray(arr))return;
-upserts.forEach(doc=>{const i=arr.findIndex(x=>x.id===doc.id);if(i>=0)arr[i]=doc;else arr.push(doc)});
+upserts.forEach(doc=>{const i=arr.findIndex(x=>x.id===doc.id);if(collection==='products'){const merged={...doc};const hasBase=typeof doc._baseStock==='number';delete merged._baseStock;if(i>=0&&hasBase)merged.stock=doc.stock+(arr[i].stock-doc._baseStock);if(i>=0)arr[i]=merged;else arr.push(merged)}else if(i>=0)arr[i]=doc;else arr.push(doc)});
 deletes.forEach(id=>{const i=arr.findIndex(x=>x.id===id);if(i>=0)arr.splice(i,1)})}
 function fixDuplicateTicketNumbers(){const groups={};state.sales.forEach(s=>{if(!s.numVenta)return;(groups[s.numVenta]=groups[s.numVenta]||[]).push(s)});let maxNum=state.sales.reduce((m,s)=>Math.max(m,s.numVenta||0),0);Object.values(groups).forEach(list=>{if(list.length<2)return;list.sort((a,b)=>a.id-b.id);for(let i=1;i<list.length;i++){maxNum++;list[i].numVenta=maxNum}})}
 function finishRemoteApply(){fixDuplicateTicketNumbers();saveData();render()}

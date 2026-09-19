@@ -110,9 +110,36 @@ export function mapToArray(map) {
 // ---------------------------------------------------------------------------
 
 export function emptyShadow() {
-  const shadow = { settings: null };
+  const shadow = { settings: null, stock: {} };
   for (const col of COLLECTIONS) shadow[col] = {};
   return shadow;
+}
+
+/** Extracts { [id]: stock } for products carrying a numeric stock; ignores the rest. Used to seed
+ *  shadow.stock (see below) from a full snapshot, e.g. right after firstSync's merge. */
+export function stockMapFromProducts(products) {
+  const map = {};
+  for (const p of products || []) {
+    if (p && typeof p.stock === 'number') map[String(p.id)] = p.stock;
+  }
+  return map;
+}
+
+/**
+ * Reads `_baseStock` for each product upsert from `shadowStockMap` (shadow.stock, indexed by
+ * String(id)), i.e. the last stock value this device knows is in the cloud, BEFORE the update
+ * being processed. Attach this to a remote batch of product upserts *before* folding it into the
+ * shadow (see cobral-cloud.js onRemote for 'products'), so the app can three-way-merge stock:
+ *   merged.stock = upsert.stock + (local.stock - upsert._baseStock)
+ * Pure; does not mutate `upserts`. A product with no known shadow stock (new product, or a
+ * shadow that predates this feature) gets no `_baseStock` field at all — the app treats that as
+ * "unknown base" and simply takes the remote value, same as before this merge existed.
+ */
+export function attachBaseStock(shadowStockMap, upserts) {
+  return (upserts || []).map((doc) => {
+    const known = (shadowStockMap || {})[String(doc.id)];
+    return typeof known === 'number' ? { ...doc, _baseStock: known } : { ...doc };
+  });
 }
 
 /** Builds a shadow that exactly matches a snapshot (used right after firstSync / a full push). */
@@ -123,14 +150,25 @@ export function buildShadowFromSnapshot(snapshot) {
     for (const id of Object.keys(map)) shadow[col][id] = hashDoc(map[id]);
   }
   shadow.settings = snapshot.settings ? hashDoc(snapshot.settings) : null;
+  shadow.stock = stockMapFromProducts(snapshot.products);
   return shadow;
 }
 
-/** Returns a new shadow with the given collection's upserts/deletes applied. Pure (does not mutate input). */
+/** Returns a new shadow with the given collection's upserts/deletes applied. Pure (does not mutate input).
+ *  For collection === 'products', also refreshes shadow.stock[id] to the upsert's `stock` (this is how
+ *  shadowStock stays current both on remote receipt and on push dispatch — see the header comment
+ *  in cobral-cloud.js for the three points where this fires). */
 export function updateShadowForCollection(shadow, collection, upserts, deleteIds) {
   const next = { ...shadow, [collection]: { ...shadow[collection] } };
   for (const doc of upserts || []) next[collection][String(doc.id)] = hashDoc(doc);
   for (const id of deleteIds || []) delete next[collection][String(id)];
+  if (collection === 'products') {
+    next.stock = { ...(shadow.stock || {}) };
+    for (const doc of upserts || []) {
+      if (doc && typeof doc.stock === 'number') next.stock[String(doc.id)] = doc.stock;
+    }
+    for (const id of deleteIds || []) delete next.stock[String(id)];
+  }
   return next;
 }
 

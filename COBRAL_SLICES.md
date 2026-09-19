@@ -182,13 +182,16 @@ copy `app-debug.apk` to the project root as `Cobral_v5.6.apk` for Jimbo to insta
 - **Test (Opus):** emulator APK + web client on the same account: sale on one appears on the other;
   airplane mode on the emulator → sale → back online → synced; delete propagates; logout keeps local data.
 
-### [ ] B4 · Stock merge by deltas (found testing B3)
+### [x] B4 · Stock merge by deltas (found testing B3)
 - Problem (reproduced on the emulator): stock is last-write-wins. A remote product update that was queued during
   an open sale is applied after the sale and overwrites the local decrement (sold 2 locally + 1 remotely → only 1 counted).
 - Fix: three-way merge for `products[].stock`. The module keeps `shadowStock[id]` = last stock value this device
   knows is in the cloud (set on remote receipt and on push dispatch) and passes it as `_baseStock` with product
   upserts in `onRemote`. The app merges `stock = remote.stock + (local.stock − base)` (other fields: remote wins),
   then `saveData()` pushes the merged value. Concurrent decrements on two devices must converge to base − a − b.
+- **Done:** device re-test 23 − 2 (phone, sale open) − 1 (peer) = 20 on phone and cloud. Unit 33/33, e2e 17/17.
+  **Residual limitation (documented, accepted):** two devices writing the same product's stock blind in the same
+  ~1 s window can still lose one side. Full fix = stock as a movement log (future, only if Jimbo adds more sellers).
 - Tests: unit tests in sync-core, an e2e step with two clients selling the same product concurrently, and Opus
   repeats the queued-during-sale scenario on the emulator.
 

@@ -3,6 +3,7 @@
 // Usage:
 //   node tools/sync-peer.mjs signup  <email> <pass>
 //   node tools/sync-peer.mjs dump    <email> <pass>
+//   node tools/sync-peer.mjs stock   <email> <pass> <productName>
 //   node tools/sync-peer.mjs add-sale <email> <pass> <productName>     (sells 1 unit of that product)
 //   node tools/sync-peer.mjs delete-sale <email> <pass> <numVenta>
 //   node tools/sync-peer.mjs watch   <email> <pass> <seconds>          (prints remote changes)
@@ -27,6 +28,9 @@ const summary = s => `sales=${s.sales.length} products=${s.products.length} debt
 
 if (cmd === 'signup' || cmd === 'dump') {
   console.log(summary(snap));
+} else if (cmd === 'stock') {
+  const p = snap.products.find(x => x.name === arg);
+  console.log(`cloud stock ${arg} = ${p ? p.stock : 'not found'}`);
 } else if (cmd === 'add-sale') {
   const p = snap.products.find(x => x.name === arg) || snap.products[0];
   const num = Math.max(0, ...snap.sales.map(x => x.numVenta || 0)) + 1;

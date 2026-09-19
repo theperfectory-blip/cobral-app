@@ -14,9 +14,16 @@
 //       (or null when signed out). Read user.uid / user.email from it as needed.
 //     - onRemote({ collection, upserts, deletes }): called when OTHER devices (or the server)
 //       change data. `collection` is one of 'sales' | 'products' | 'debts' | 'debtHistory' |
-//       'settings'. `upserts` is an array of plain app docs (no "_"-prefixed sync fields).
-//       `deletes` is an array of ids (numbers) to remove locally. Local echoes of this device's
-//       own writes are filtered out already — never re-push what you receive here.
+//       'settings'. `upserts` is an array of plain app docs (no "_"-prefixed sync fields), with
+//       ONE exception: for collection === 'products', each upsert MAY carry `_baseStock` — a
+//       number, the shadowStock value this device believed was in the cloud right BEFORE this
+//       remote update (i.e. before the stock change being delivered). It is omitted (not merely
+//       undefined) when the base is unknown (new product, or a pre-B4 shadow). The caller uses it
+//       to three-way-merge `stock` against a locally-in-progress change instead of overwriting it:
+//         merged.stock = upsert.stock + (local.stock - upsert._baseStock)
+//       and must strip `_baseStock` before persisting the doc. `deletes` is an array of ids
+//       (numbers) to remove locally. Local echoes of this device's own writes are filtered out
+//       already — never re-push what you receive here.
 //     - onStatus(status): called whenever status() changes. One of:
 //       'signed-out' | 'offline' | 'pending' | 'synced' | 'error'.
 //     - emulatorHost (optional): '10.0.2.2' | '127.0.0.1' | etc. When set (or when
@@ -111,6 +118,7 @@ import {
   updateShadowForCollection,
   updateShadowSettings,
   emptyShadow,
+  attachBaseStock,
 } from './sync-core.js';
 
 const MAX_BATCH_OPS = 450;
@@ -372,9 +380,12 @@ export function createClient() {
           }
         }
         if (!upserts.length && !deletes.length) return;
+        // Read shadowStock BEFORE folding this batch in, so _baseStock reflects the value this
+        // device believed was in the cloud prior to the remote update being delivered.
+        const emittedUpserts = col === 'products' ? attachBaseStock(shadow.stock, upserts) : upserts;
         shadow = updateShadowForCollection(shadow, col, upserts, deletes);
         persistShadow(uid);
-        try { onRemoteCb({ collection: col, upserts, deletes }); } catch (e) { /* caller's problem */ }
+        try { onRemoteCb({ collection: col, upserts: emittedUpserts, deletes }); } catch (e) { /* caller's problem */ }
       }, (err) => {
         setStatus(err && err.code === 'unavailable' ? 'offline' : 'error');
       });
