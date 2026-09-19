@@ -29,11 +29,22 @@
 //     - emulatorHost (optional): '10.0.2.2' | '127.0.0.1' | etc. When set (or when
 //       localStorage.getItem('cobralEmulatorHost') is set), Auth and Firestore connect to the
 //       local emulators (ports 9099 / 8080) instead of production.
+//     - appName (optional, default 'cobral'): the FirebaseApp name. It MUST be stable across launches:
+//       Firebase keys both the persisted auth session and the Firestore offline cache (incl. queued
+//       writes) by app name. Only tests that run several clients in one process pass unique names.
 //     Returns nothing; callbacks fire asynchronously as Firebase initializes.
 //
 //   signIn(email, pass) -> Promise<{ ok:true, user } | { ok:false, message }>
 //   signUp(email, pass) -> Promise<{ ok:true, user } | { ok:false, message }>
-//   signOut() -> Promise<void>
+//   signOut({ clearCache } = {}) -> Promise<void>
+//     clearCache (optional, default false): also terminate()s the Firestore client and clears its
+//     IndexedDB persistence cache (clearIndexedDbPersistence) before resolving, in addition to the
+//     normal Firebase Auth sign-out. Used by the web client's privacy-sensitive sign-out (shared-PC
+//     safety, Chile Ley 21.719) so no cached sales/inventory data remains for the next person. The
+//     APK's Cuenta sign-out calls signOut() with no options and keeps everything cached for offline
+//     use — unchanged behavior. clearIndexedDbPersistence can reject if another tab still holds the
+//     same Firestore instance open (persistentMultipleTabManager); that failure is swallowed here —
+//     callers should still proceed with clearing their own app-level storage and reloading.
 //   resetPassword(email) -> Promise<{ ok:true } | { ok:false, message }>
 //     `message` is a short Chilean-Spanish string suitable for direct display in the UI.
 //
@@ -101,8 +112,11 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
+  waitForPendingWrites,
   writeBatch,
   serverTimestamp,
+  terminate,
+  clearIndexedDbPersistence,
 } from 'firebase/firestore';
 import {
   COLLECTIONS,
@@ -291,7 +305,7 @@ export function createClient() {
   // -------------------------------------------------------------------------
 
   function init(opts) {
-    const { config, onUser, onRemote, onStatus, emulatorHost } = opts || {};
+    const { config, onUser, onRemote, onStatus, emulatorHost, appName } = opts || {};
     onUserCb = typeof onUser === 'function' ? onUser : () => {};
     onRemoteCb = typeof onRemote === 'function' ? onRemote : () => {};
     onStatusCb = typeof onStatus === 'function' ? onStatus : () => {};
@@ -302,7 +316,7 @@ export function createClient() {
       store.set('cobralDeviceId', device);
     }
 
-    app = initializeApp(config, 'cobral-' + Math.random().toString(36).slice(2));
+    app = initializeApp(config, appName || 'cobral');
 
     const indexedDbAvailable = hasIndexedDB();
     auth = initializeAuth(app, {
@@ -339,6 +353,13 @@ export function createClient() {
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
         attachListeners(currentUid);
+        // Writes queued offline in a previous session live in the persistent cache, not in our
+        // counter: count them as in flight until Firestore acknowledges them all.
+        inFlightCommits++;
+        waitForPendingWrites(db).then(
+          () => { inFlightCommits--; refreshStatus(); },
+          () => { inFlightCommits--; refreshStatus(); },
+        );
         refreshStatus();
       } else {
         currentUid = null;
@@ -581,10 +602,15 @@ export function createClient() {
     }
   }
 
-  async function signOut() {
+  async function signOut(opts) {
+    const clearCache = !!(opts && opts.clearCache);
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     pendingSnapshot = null;
     await firebaseSignOut(auth);
+    if (clearCache && db) {
+      try { await terminate(db); } catch (e) { /* ignore */ }
+      try { await clearIndexedDbPersistence(db); } catch (e) { /* ignore (e.g. another tab still open) */ }
+    }
   }
 
   async function resetPassword(email) {

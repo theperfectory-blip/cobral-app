@@ -17,7 +17,7 @@ const empty = () => ({ sales: [], products: [], debts: [], debtHistory: [], sett
 const client = createClient();
 const remote = [];
 let user = null;
-client.init({ config, emulatorHost: '127.0.0.1', onUser: u => { user = u; }, onRemote: c => remote.push(c) });
+client.init({ config, emulatorHost: '127.0.0.1', appName: 'cobral-peer', onUser: u => { user = u; }, onRemote: c => remote.push(c) });
 
 const auth = cmd === 'signup' ? await client.signUp(email, pass) : await client.signIn(email, pass);
 if (!auth.ok) { console.log('AUTH FAIL: ' + auth.message); process.exit(1); }

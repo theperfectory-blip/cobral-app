@@ -84,6 +84,7 @@ function newClient() {
   client.init({
     config: FIREBASE_CONFIG,
     emulatorHost: EMULATOR_HOST,
+    appName: 'cobral-e2e-' + Math.random().toString(36).slice(2), // several clients in one process
     onUser: rec.onUser,
     onRemote: rec.onRemote,
     onStatus: rec.onStatus,

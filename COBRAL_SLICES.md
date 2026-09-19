@@ -229,7 +229,15 @@ everywhere**; **the cart uses the current location's price**.
 
 ## Phase C — Web version
 
-### [ ] C1 · Responsive web shell (Sonnet)
+### [x] C1 · Responsive web shell (Sonnet)
+- **Done 2026-09-19.** Tested: APK unchanged; browser pane (gate, validation, 1280px centered 760px column, centered
+  540px dialogs, Escape minimizes sale, click grabber/mini bar on pointer:fine); web build inside the emulator WebView via
+  `tools/navigate.mjs` against the emulators: login loads cloud without uploading defaults, web→peer and peer→web sync,
+  SW `cobral-web-v6` active, sign-out clears ventasApp/shadow/Firestore cache/photos.
+- **Bugs found while testing C1 (fixed by Opus):** the module used a random FirebaseApp name per launch → the session
+  and the Firestore offline queue were lost on every restart (now fixed name `cobral`, `appName` option for tests);
+  status showed "Sincronizado" after restarting with offline-queued writes (now `waitForPendingWrites` at login);
+  web sign-out now also deletes the local photos DB.
 - Same `www/index.html`. Detect `window.Capacitor?.isNativePlatform()`; on web **login is required**.
 - ≥ 900 px: centered app column with max width, modals as centered dialogs instead of bottom sheets,
   hover states, keyboard (Enter/Escape). Gestures from A6 work with mouse drag (Pointer Events).
