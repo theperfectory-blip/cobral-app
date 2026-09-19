@@ -71,7 +71,7 @@ locate code by function name, not by line.
   `s.numVenta` exactly, in addition to product names containing it.
 - **Test:** type a product name → totals shrink to match the list; type `#12` → exactly ticket 12 and its total; clear → totals restored; input keeps focus while typing.
 
-### [ ] A2 · Calendar: Monday first + Monday–Sunday weeks
+### [x] A2 · Calendar: Monday first + Monday–Sunday weeks
 - `getWeekStart` → Monday-based (`(getDay()+6)%7`). Everything that derives weeks (Top + Ventas
   week filters, `getWeeksForMonth`, pickers, `visibilitychange` refresh, `init`) must follow.
 - `renderCalendarGrid`: labels `Lu Ma Mi Ju Vi Sá Do`, leading blanks = `(getDay()+6)%7`.
