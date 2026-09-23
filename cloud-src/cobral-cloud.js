@@ -112,7 +112,6 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  waitForPendingWrites,
   writeBatch,
   serverTimestamp,
   terminate,
@@ -233,12 +232,24 @@ export function createClient() {
   let pendingSnapshot = null;
   let debounceTimer = null;
 
+  // Session generation: incremented each time onAuthStateChanged fires with a non-null user.
+  // Each batch.commit() captures the current gen; if it doesn't match authGen when the promise
+  // settles, the commit is from a previous auth session and must be ignored (shadow, counters,
+  // etc. belong to the new user).
+  let authGen = 0;
+
   // Offline-first write tracking: a batch.commit() promise does not settle until the server
   // acks it, but the write is already durable in Firestore's local queue the instant commit()
   // is called. inFlightCommits counts commits we've called but that haven't settled yet, so
   // status() can report 'pending'/'offline' correctly without waiting on the network.
   let inFlightCommits = 0;
   let manualOffline = false; // set by the test-only _network() hook (tools/cloud-e2e.mjs)
+
+  // Listener metadata tracking: maps collection/settings keys to boolean (whether that listener
+  // currently sees hasPendingWrites). Refreshed on every onSnapshot callback so refreshStatus()
+  // can detect pending writes without awaiting waitForPendingWrites (which can hang when
+  // switching auth users).
+  let listenerPending = {};
 
   // Test-only instrumentation (not part of the documented public API): lets tools/cloud-e2e.mjs
   // assert "no new writes were dispatched" without reaching into Firestore internals.
@@ -258,11 +269,14 @@ export function createClient() {
     return true; // Node / unknown environment: assume online
   }
 
-  /** Re-derives status() from the current in-flight-commit count + connectivity. Never
-   *  overrides 'error' or 'signed-out' on its own — those are set explicitly at their source. */
+  /** Re-derives status() from the current in-flight-commit count + listener metadata + connectivity.
+   *  Never overrides 'error' or 'signed-out' on its own — those are set explicitly at their source.
+   *  Checks both dispatchOps-sourced commits (inFlightCommits) and listener-sourced writes
+   *  (listenerPending) so status reflects all pending writes without awaiting waitForPendingWrites. */
   function refreshStatus() {
     if (!currentUid) { setStatus('signed-out'); return; }
-    if (inFlightCommits > 0) {
+    const hasUnackedWrites = inFlightCommits > 0 || Object.values(listenerPending).some(Boolean);
+    if (hasUnackedWrites) {
       setStatus(currentlyOnline() ? 'pending' : 'offline');
     } else if (currentStatus !== 'error') {
       setStatus('synced');
@@ -350,16 +364,16 @@ export function createClient() {
     authUnsub = onAuthStateChanged(auth, (user) => {
       detachListeners();
       if (user) {
+        // New auth session: increment generation counter to invalidate any pending commits from
+        // the previous user, reset the in-flight counter, and clear listener metadata.
+        authGen++;
+        inFlightCommits = 0;
+        debugStats.commitsInFlight = 0;
+        listenerPending = {};
+
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
         attachListeners(currentUid);
-        // Writes queued offline in a previous session live in the persistent cache, not in our
-        // counter: count them as in flight until Firestore acknowledges them all.
-        inFlightCommits++;
-        waitForPendingWrites(db).then(
-          () => { inFlightCommits--; refreshStatus(); },
-          () => { inFlightCommits--; refreshStatus(); },
-        );
         refreshStatus();
       } else {
         currentUid = null;
@@ -380,11 +394,16 @@ export function createClient() {
       try { unsub(); } catch (e) { /* ignore */ }
     }
     unsubscribers = [];
+    listenerPending = {};
   }
 
   function attachListeners(uid) {
     for (const col of COLLECTIONS) {
       const unsub = onSnapshot(collectionRef(uid, col), { includeMetadataChanges: true }, (snap) => {
+        // Track listener metadata as the FIRST statement so it runs before any early returns.
+        listenerPending[col] = !!snap.metadata.hasPendingWrites;
+        refreshStatus();
+
         const upserts = [];
         const deletes = [];
         for (const change of snap.docChanges()) {
@@ -414,6 +433,10 @@ export function createClient() {
     }
 
     const unsubSettings = onSnapshot(settingsRef(uid), { includeMetadataChanges: true }, (snap) => {
+      // Track listener metadata as the FIRST statement so it runs before any early returns.
+      listenerPending.settings = !!snap.metadata.hasPendingWrites;
+      refreshStatus();
+
       if (!snap.exists()) return;
       if (snap.metadata.hasPendingWrites) return;
       const data = snap.data();
@@ -479,9 +502,11 @@ export function createClient() {
    * Chunks `ops` into batches of <= MAX_BATCH_OPS and calls commit() on each WITHOUT awaiting
    * the server's ack — the write is already durable in Firestore's local queue as soon as
    * commit() returns, which is what the shadow must reflect (see the offline-first note in the
-   * push() doc comment up top). Callers apply the optimistic shadow update themselves *before*
-   * calling this, then this function only has to roll a specific doc back out of the shadow if
-   * its batch is ultimately rejected (e.g. permission-denied) — never blocks its caller.
+   * push() doc comment up top). Captures authGen per batch so commits from previous auth
+   * sessions are ignored (the shadow, counters, and status belong to the new user).
+   * Callers apply the optimistic shadow update themselves *before* calling this, then this
+   * function only has to roll a specific doc back out of the shadow if its batch is ultimately
+   * rejected (e.g. permission-denied) — never blocks its caller.
    */
   function dispatchOps(uid, ops) {
     for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
@@ -489,15 +514,21 @@ export function createClient() {
       const batch = writeBatch(db);
       for (const op of chunk) batch.set(op.ref, op.data);
 
+      // Capture the current auth generation so we can ignore this commit's result if the auth
+      // session changes (e.g. user signed out and someone else signed in) before the batch settles.
+      const gen = authGen;
+
       inFlightCommits++;
       debugStats.commitsInFlight = inFlightCommits;
       debugStats.writesDispatched += chunk.length;
 
       batch.commit().then(() => {
+        if (gen !== authGen) return; // commit from a previous auth session; ignore
         inFlightCommits--;
         debugStats.commitsInFlight = inFlightCommits;
         refreshStatus();
       }).catch((err) => {
+        if (gen !== authGen) return; // commit from a previous auth session; ignore
         inFlightCommits--;
         debugStats.commitsInFlight = inFlightCommits;
         for (const op of chunk) forgetShadowEntry(op.collectionName, op.docId);

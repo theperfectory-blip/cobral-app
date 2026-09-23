@@ -262,3 +262,16 @@ everywhere**; **the cart uses the current location's price**.
 - **Test:** login on the browser pane with the same account as the emulator, full sale flow, sync both ways.
 
 **Phase B+C exit:** version **v6.0**, code map + project context updated, `Cobral_v6.0.apk` in project root.
+
+---
+
+## Post-v6.0 review fixes (2026-09-22, APK only; web review pending)
+Loop used: Opus writes the spec → Haiku implements → (Sonnet if Haiku fails) → Opus reviews diff, builds, tests on emulator.
+- [x] F1 · First login on a fresh install wiped sales/debts made before logging in (`finishCloudLogin` now sends this session's sales/debts/new products; samples ids 1–92 still never uploaded).
+- [x] F2 · Product edit silently lost when a remote change replaced the product object while the modal was open (`saveProduct` re-resolves the live product; untouched stock field keeps live stock).
+- [x] F3 · `cancelSale` restored every product to the open-time snapshot, reverting remote decrements (now restores only what the cart took).
+- [x] F4 · Clearing a day in Ubicaciones deleted special prices; saving a product dropped prices for locations not in the schedule.
+- [x] F5 · Cloud status stuck in "Pendiente" after sign-out/sign-in with unacked writes (module: auth-session generation + listener `hasPendingWrites` instead of `waitForPendingWrites`).
+- [x] F6 · CSV import ids `Date.now()+Math.random()*1000|0` (32-bit wrap, frequent collisions) → `newProductId()`.
+- [x] F7 · Android back button closed the app and lost the open sale → `@capacitor/app` backButton handler (minimize sale → close modal → Home → minimizeApp).
+- [x] Minor: percentages with decimal comma; payment labels capitalized; long names no longer overlap "+" in picker cards; Enter/Go in Cuenta; remote schedule change updates today's location; email kept after a failed login.
