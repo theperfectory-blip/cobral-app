@@ -23,6 +23,7 @@
     "singleProjectMode": true
   },
   "hosting": {
+    "target": "web",
     "public": "www",
     "ignore": [
       "firebase.json",

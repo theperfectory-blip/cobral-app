@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "cobral-app"
-  }
+  },
+  "targets": {
+    "cobral-app": {
+      "hosting": {
+        "web": [
+          "cobral"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

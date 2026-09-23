@@ -253,7 +253,12 @@ everywhere**; **the cart uses the current location's price**.
     `cloud/config.js`, `cloud/cobral-cloud.js`.
 
 ### [ ] C2 · Hosting deploy (Opus — ask Jimbo before publishing)
-- `firebase.json` hosting (public = `www`, no-cache headers for html/js), deploy to `cobral-*.web.app`.
+- `firebase.json` hosting (public = `www`, no-cache headers for html/js). **Done 2026-09-22:** Hosting site
+  `cobral` created (`https://cobral.web.app`, the short name Jimbo asked for — the default `cobral-app` site
+  still exists but is unused), wired via `firebase target:apply hosting web cobral` + `"target":"web"` in
+  `firebase.json`. **Not deployed yet** — still needs Jimbo's go-ahead before `firebase deploy --only hosting`.
+- **Also done 2026-09-22:** Firestore `(default)` delete protection **ENABLED** (was disabled) — requires
+  explicitly disabling it again before the database could ever be deleted.
 - **Test:** login on the browser pane with the same account as the emulator, full sale flow, sync both ways.
 
 **Phase B+C exit:** version **v6.0**, code map + project context updated, `Cobral_v6.0.apk` in project root.
