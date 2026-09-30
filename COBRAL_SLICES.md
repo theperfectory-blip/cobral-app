@@ -337,7 +337,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - **Table**: Foto (thumb), Nombre, Categoría, Stock (red ≤ 0, amber ≤ 5), Costo, Precio, Margen (existing pill),
   Precios por ubicación (count or "—"); sortable headers; row click → product editor in a drawer (renderProductModal content).
 
-### [ ] D5 · Deudas
+### [x] D5 · Deudas
 - Two panes: left list of debtors with total owed (tabs Pendientes / Historial), right the selected debtor's detail
   (existing debtor detail/history content inline, with Pagar / Editar / Eliminar actions). Empty state when nothing selected.
 
