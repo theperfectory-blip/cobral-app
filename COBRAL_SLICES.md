@@ -314,7 +314,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
   (previous/next period, next disabled at the current period) + "Hoy" + calendar button, in one line. Uses the existing
   state fields and goToCurrentPeriod.
 
-### [ ] D2 · Inicio (dashboard)
+### [x] D2 · Inicio (dashboard)
 - Toolbar: period bar, location filter (select), category filter (select), actions "Exportar vista" and "Nueva venta".
 - KPI row (6 cards): Ingresos, Costo, Margen, Margen %, N° ventas, Ticket promedio — for the Top filters (period +
   location). Ticket promedio = ingresos / ventas.
