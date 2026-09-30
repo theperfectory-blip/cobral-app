@@ -275,3 +275,82 @@ Loop used: Opus writes the spec → Haiku implements → (Sonnet if Haiku fails)
 - [x] F6 · CSV import ids `Date.now()+Math.random()*1000|0` (32-bit wrap, frequent collisions) → `newProductId()`.
 - [x] F7 · Android back button closed the app and lost the open sale → `@capacitor/app` backButton handler (minimize sale → close modal → Home → minimizeApp).
 - [x] Minor: percentages with decimal comma; payment labels capitalized; long names no longer overlap "+" in picker cards; Enter/Go in Cuenta; remote schedule change updates today's location; email kept after a failed login.
+
+---
+
+## Phase D — Desktop web design (requested 2026-09-30, ships as v6.1)
+Web review found the desktop web is the phone UI in a centered 760 px column (40 % of a 1920 px screen, bottom nav,
+cards instead of tables, bottom sheets). Jimbo approved an exclusive desktop design (mockup shown in chat) + **all
+extras** (daily-sales chart, keyboard shortcuts, export current view to CSV). Main use on PC: **review and administer**
+(selling from the PC is occasional) → prioritise Inicio / Ventas / Inventario; POS two-pane is functional, not cash-register-optimised.
+
+Work happens on branch `desktop` in the worktree `C:\Users\Administrator\Downloads\Cobral App\cobral-desktop`
+(main stays stable for APK verification). Loop: Opus spec → **Haiku** implements (→ Sonnet if Haiku fails) →
+Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile must be unchanged).
+
+### Hard rules for every D slice
+1. Desktop mode = **web only** (`!isNative`) **and** viewport ≥ 1100 px → `document.body.classList.add('desk')`, kept in sync
+   with a `matchMedia('(min-width:1100px)')` listener that re-renders on change. APK and < 1100 px: **byte-for-byte the
+   current UI** (all desktop CSS scoped under `body.desk`, all desktop JS paths behind a single `isDesk()` helper).
+2. **No duplicated business logic.** Desktop renderers call the same data functions (getVisibleSales, getStats,
+   getTopProductsByRevenue, getFilteredSalesByPeriodAndLocation, addToCart, completeSale, saveProduct, openSaleDetail…).
+   Only markup/layout differs.
+3. No external libraries or CDNs (offline-first): charts are hand-written inline SVG.
+4. Full dark-mode coverage (`body.dark-mode.desk …`). Chilean Spanish copy. Surgical edits; don't reformat.
+5. `node tools/check.mjs` must print OK. Do not bump version, commit, deploy or touch adb/Firebase.
+
+### [ ] D1 · Desktop shell
+- Left **sidebar** (fixed, 232 px): Cobral logo + user name; nav Inicio / Ventas / Deudas / Inventario (active state,
+  hover, icons from the existing SVG set); bottom block: current location (click → openLocationModal), cloud status
+  (same states as the header icon; click → openAccountModal), Configuración (openSettings), dark-mode toggle.
+  When a sale is in progress (cart non-empty or minimized) show a "Venta en curso · $total" item that opens it.
+- Hide the mobile header, bottom nav and mini bar in desk mode. Main area: `margin-left:232px`, content max-width 1320 px,
+  24–32 px padding, a page title row (title + right-aligned actions).
+- **Drawers:** in desk mode, generic modals (sale detail, product editor, drill-down, debtor detail, settings, account,
+  locations, CSV) render as a right-side drawer (width 480 px, full height, own scroll, overlay click / × / Esc closes).
+  Small confirmations and the calendar picker stay centered dialogs. Implement once (CSS on `.modal-overlay`/`.modal` +
+  a drawer class chosen by the opener) so existing modal functions keep working unchanged.
+- **Period bar** (shared by Inicio and Ventas in desk mode): segmented Día / Semana / Mes / Año + ‹ label › stepper
+  (previous/next period, next disabled at the current period) + "Hoy" + calendar button, in one line. Uses the existing
+  state fields and goToCurrentPeriod.
+
+### [ ] D2 · Inicio (dashboard)
+- Toolbar: period bar, location filter (select), category filter (select), actions "Exportar vista" and "Nueva venta".
+- KPI row (6 cards): Ingresos, Costo, Margen, Margen %, N° ventas, Ticket promedio — for the Top filters (period +
+  location). Ticket promedio = ingresos / ventas.
+- **Sales chart** (inline SVG bars, responsive width, ~220 px high): day → per hour (8–21 h), week → per day (Lu–Do),
+  month → per day of month, year → per month. Hover tooltip with value; y-axis with 3–4 gridlines in CLP short format
+  ($1,2M / $350k); bar for the current/selected unit highlighted.
+- Top ventas as a **table**: #, Producto, Categoría, Uds (or g), Ingresos, % del total; sortable by clicking headers;
+  row click → existing openTopProductSales (in a drawer).
+
+### [ ] D3 · Ventas
+- Toolbar: period bar, payment filter, location filter, search (same matching as getVisibleSales incl. #ticket),
+  "Exportar vista", "Nueva venta". KPI strip (Ingresos, Costo, Margen, %) updates live with search (reuse renderSalesStats data).
+- **Table**: # ticket, Fecha y hora, Productos (single line, ellipsis, full list in title tooltip), Ubicación, Pago (badge),
+  Total; sortable headers (default newest first); row click → openSaleDetail in a drawer (Eliminar / Modificar still work;
+  Modificar opens the edit flow). Show 50 rows + "Mostrar más".
+
+### [ ] D4 · Inventario
+- Summary cards: Referencias, Costo inventario, Margen potencial. Toolbar: search, category select, "Exportar vista",
+  "Importar CSV", "Nuevo producto".
+- **Table**: Foto (thumb), Nombre, Categoría, Stock (red ≤ 0, amber ≤ 5), Costo, Precio, Margen (existing pill),
+  Precios por ubicación (count or "—"); sortable headers; row click → product editor in a drawer (renderProductModal content).
+
+### [ ] D5 · Deudas
+- Two panes: left list of debtors with total owed (tabs Pendientes / Historial), right the selected debtor's detail
+  (existing debtor detail/history content inline, with Pagar / Editar / Eliminar actions). Empty state when nothing selected.
+
+### [ ] D6 · Nueva venta (two panes)
+- In desk mode the sale opens in the main area (not a sheet): left search (autofocus) + category chips + product **grid**
+  (4–6 columns, A5 halves still work with the mouse: left half −, right half +); right fixed cart panel (lines with qty
+  input, price input, line total, remove), totals, payment method buttons with fees, location, "Confirmar venta",
+  "Cancelar venta". Debt sales work the same way. Navigating to another page keeps the sale (sidebar "Venta en curso").
+
+### [ ] D7 · Shortcuts + export view
+- Shortcuts (desk only, ignored while typing in an input except Esc): N = nueva venta, / = focus search of the current
+  page, Esc = close drawer (sale: go back / keep sale), ? = shortcuts help popover. Enter in the sale confirms when the
+  cart has items and a payment method is selected.
+- "Exportar vista" on Inicio (top table), Ventas (filtered table) and Inventario (sorted/filtered table): CSV with the
+  visible columns and current sort, `;` separator, UTF-8 BOM, filename with page + period (e.g. `ventas-2026-09.csv`),
+  via the existing downloadCSV.
