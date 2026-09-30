@@ -33,6 +33,7 @@ if (cmd === 'signup' || cmd === 'dump') {
   console.log(`cloud stock ${arg} = ${p ? p.stock : 'not found'}`);
 } else if (cmd === 'add-sale') {
   const p = snap.products.find(x => x.name === arg) || snap.products[0];
+  if (!p) { console.log('NO PRODUCTS IN CLOUD YET (the phone is probably still uploading)'); await client.signOut(); process.exit(2); }
   const num = Math.max(0, ...snap.sales.map(x => x.numVenta || 0)) + 1;
   const sale = { id: Date.now(), numVenta: num, items: [{ productId: p.id, name: p.name, price: p.salePrice, costPrice: p.costPrice, qty: 1, unit: p.unit || 'u' }],
     subtotal: p.salePrice, fee: 0, finalAmount: p.salePrice, totalCost: p.costPrice, margin: p.salePrice - p.costPrice,

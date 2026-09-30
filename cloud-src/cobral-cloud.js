@@ -509,6 +509,9 @@ export function createClient() {
    * rejected (e.g. permission-denied) — never blocks its caller.
    */
   function dispatchOps(uid, ops) {
+    // Reflect the queued writes right away (not only when the first ack lands): otherwise the
+    // status keeps saying 'synced' during a long first upload and the user may close the app thinking it's done.
+    queueMicrotask(refreshStatus);
     for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
       const chunk = ops.slice(i, i + MAX_BATCH_OPS);
       const batch = writeBatch(db);

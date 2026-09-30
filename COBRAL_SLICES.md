@@ -354,3 +354,30 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - "Exportar vista" on Inicio (top table), Ventas (filtered table) and Inventario (sorted/filtered table): CSV with the
   visible columns and current sort, `;` separator, UTF-8 BOM, filename with page + period (e.g. `ventas-2026-09.csv`),
   via the existing downloadCSV.
+
+## Post-v6.0 verification fixes (2026-09-30, found by tools/regress.mjs + tools/regress-sync.mjs)
+- [x] F8a · `dispatchOps` didn't refresh the status when it queued writes → "Sincronizado" during a long first upload
+      (fixed by Opus: `queueMicrotask(refreshStatus)` at the start of dispatchOps).
+- [x] Dark mode: green amounts / cart line totals / payment amount / "Ver" badge unreadable (fixed by Opus, CSS).
+- [ ] F8b · Status says "Sincronizado" for a few seconds right after sign-in/sign-up, before `firstSync` has even read the
+      cloud. Module (`cloud-src/cobral-cloud.js`): add `let firstSyncRunning = 0;` — `firstSync()` does
+      `firstSyncRunning++; refreshStatus();` at its start and `firstSyncRunning--; refreshStatus();` in a `finally`
+      AFTER `dispatchOps` has been called (so the in-flight counter already covers the upload). `refreshStatus()` treats
+      `firstSyncRunning>0` like unacked writes (→ 'pending' / 'offline'). App: `finishCloudLogin` must not force a
+      'synced' status itself; it only reflects `onStatus`.
+- [ ] F9 · A local edit made less than ~1.5 s before a remote update of the SAME doc is lost (reproduced: price edited to
+      $8.500 on the phone, another device sells that product inside the push debounce window → remote doc overwrites the
+      whole product locally, price back to $8.000, nothing pushed). Fix = "local pending wins":
+      - Module: keep `dirty = {sales:Set, products:Set, debts:Set, debtHistory:Set, settings:false}`. In `push(snapshot)`
+        compute `diff(shadow, snapshot)` and add every upsert/delete id to `dirty` (settings → true). In `flushPush`,
+        after `dispatchOps`, clear the ids that were dispatched. On sign-out, reset `dirty`.
+      - Module listener: for a remote change whose id is in `dirty[col]` (or settings while `dirty.settings`), do NOT
+        update `shadow[col][id]` (so the pending local version still diffs as changed and gets pushed), but for products
+        DO update `shadow.stock[id]` to the remote stock after computing `_baseStock`; emit the upsert with
+        `_localPending:true` (keep `_baseStock`).
+      - App `applyRemoteChange`: if `doc._localPending` → for products apply ONLY the stock three-way merge
+        (`local.stock = doc.stock + (local.stock − doc._baseStock)`) and keep every other local field; for
+        sales/debts/debtHistory/settings ignore the remote version entirely. Strip `_localPending`. The following
+        `saveData()` → `push()` sends the local fields + merged stock (local edit wins, stock stays correct).
+      - Tests: unit test for the dirty bookkeeping; e2e step: client A changes product price and pushes (debounce
+        pending) while client B sells 1 of that product → both converge to A's price and stock base − 1.
