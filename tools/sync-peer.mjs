@@ -30,7 +30,7 @@ if (cmd === 'signup' || cmd === 'dump') {
   console.log(summary(snap));
 } else if (cmd === 'stock') {
   const p = snap.products.find(x => x.name === arg);
-  console.log(`cloud stock ${arg} = ${p ? p.stock : 'not found'}`);
+  console.log(`cloud stock ${arg} = ${p ? p.stock : "not found"} price=${p ? p.salePrice : "-"}`);
 } else if (cmd === 'add-sale') {
   const p = snap.products.find(x => x.name === arg) || snap.products[0];
   if (!p) { console.log('NO PRODUCTS IN CLOUD YET (the phone is probably still uploading)'); await client.signOut(); process.exit(2); }
@@ -42,6 +42,22 @@ if (cmd === 'signup' || cmd === 'dump') {
   client.push({ ...snap, sales: [...snap.sales, sale] });
   await sleep(2500);
   console.log(`pushed sale #${num} (${p.name} $${p.salePrice}) id=${sale.id}; status=${client.status()}`);
+} else if (cmd === 'armed-sale') {
+  // Signs in first, then sells 1 unit of <productName> the instant the file tools/out/fire exists (race tests).
+  const { existsSync, rmSync } = await import('node:fs');
+  const flag = new URL('./out/fire', import.meta.url);
+  if (existsSync(flag)) rmSync(flag);
+  console.log('ARMED');
+  while (!existsSync(flag)) await sleep(20);
+  const p = snap.products.find(x => x.name === arg);
+  const num = Math.max(0, ...snap.sales.map(x => x.numVenta || 0)) + 1;
+  const sale = { id: Date.now(), numVenta: num, items: [{ productId: p.id, name: p.name, price: p.salePrice, costPrice: p.costPrice, qty: 1, unit: p.unit || 'u' }],
+    subtotal: p.salePrice, fee: 0, finalAmount: p.salePrice, totalCost: p.costPrice, margin: p.salePrice - p.costPrice,
+    marginPct: 0, paymentMethod: 'efectivo', date: new Date().toISOString(), location: 'Peer', isAbono: false };
+  p.stock -= 1;
+  client.push({ ...snap, sales: [...snap.sales, sale] });
+  await sleep(3000);
+  console.log(`fired: sold 1 ${p.name}, peer stock now ${p.stock}; status=${client.status()}`);
 } else if (cmd === 'delete-sale') {
   const n = Number(arg);
   client.push({ ...snap, sales: snap.sales.filter(s => s.numVenta !== n) });

@@ -232,6 +232,11 @@ export function createClient() {
   let pendingSnapshot = null;
   let debounceTimer = null;
 
+  // Dirty tracking: records which docs have local changes pending a push. If a remote change
+  // arrives for a dirty doc, we emit _localPending:true and skip the shadow update (except
+  // for products where we still update shadowStock) so the pending local version wins.
+  let dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
+
   // Session generation: incremented each time onAuthStateChanged fires with a non-null user.
   // Each batch.commit() captures the current gen; if it doesn't match authGen when the promise
   // settles, the commit is from a previous auth session and must be ignored (shadow, counters,
@@ -244,6 +249,11 @@ export function createClient() {
   // status() can report 'pending'/'offline' correctly without waiting on the network.
   let inFlightCommits = 0;
   let manualOffline = false; // set by the test-only _network() hook (tools/cloud-e2e.mjs)
+
+  // firstSync tracking: incremented when firstSync starts, decremented after dispatchOps is called
+  // (so the in-flight counter covers the upload). refreshStatus() treats firstSyncRunning>0 like
+  // unacked writes, keeping status 'pending'/'offline' until the first sync completes.
+  let firstSyncRunning = 0;
 
   // Listener metadata tracking: maps collection/settings keys to boolean (whether that listener
   // currently sees hasPendingWrites). Refreshed on every onSnapshot callback so refreshStatus()
@@ -275,7 +285,7 @@ export function createClient() {
    *  (listenerPending) so status reflects all pending writes without awaiting waitForPendingWrites. */
   function refreshStatus() {
     if (!currentUid) { setStatus('signed-out'); return; }
-    const hasUnackedWrites = inFlightCommits > 0 || Object.values(listenerPending).some(Boolean);
+    const hasUnackedWrites = inFlightCommits > 0 || firstSyncRunning > 0 || Object.values(listenerPending).some(Boolean);
     if (hasUnackedWrites) {
       setStatus(currentlyOnline() ? 'pending' : 'offline');
     } else if (currentStatus !== 'error') {
@@ -370,6 +380,7 @@ export function createClient() {
         inFlightCommits = 0;
         debugStats.commitsInFlight = 0;
         listenerPending = {};
+        dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
 
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
@@ -423,9 +434,39 @@ export function createClient() {
         // Read shadowStock BEFORE folding this batch in, so _baseStock reflects the value this
         // device believed was in the cloud prior to the remote update being delivered.
         const emittedUpserts = col === 'products' ? attachBaseStock(shadow.stock, upserts) : upserts;
-        shadow = updateShadowForCollection(shadow, col, upserts, deletes);
+
+        // F9: "local pending wins" — for dirty docs, emit _localPending:true and skip shadow update
+        // (except products: still update shadowStock for three-way merge).
+        const dirtyIds = dirty[col];
+        const emittedUpserts2 = emittedUpserts.map((doc) => {
+          const isDirty = dirtyIds.has(String(doc.id));
+          return isDirty ? { ...doc, _localPending: true } : doc;
+        });
+
+        // Separate dirty and non-dirty for shadow update.
+        const nonDirtyUpserts = [];
+        for (const doc of upserts) {
+          if (!dirtyIds.has(String(doc.id))) {
+            nonDirtyUpserts.push(doc);
+          }
+        }
+        const nonDirtyDeletes = deletes.filter((id) => !dirtyIds.has(String(id)));
+
+        // Update shadow only for non-dirty upserts/deletes.
+        shadow = updateShadowForCollection(shadow, col, nonDirtyUpserts, nonDirtyDeletes);
+
+        // For dirty products, manually update shadowStock (for three-way merge base).
+        if (col === 'products') {
+          for (const doc of upserts) {
+            const idStr = String(doc.id);
+            if (dirtyIds.has(idStr) && typeof doc.stock === 'number') {
+              shadow.stock = { ...shadow.stock, [idStr]: doc.stock };
+            }
+          }
+        }
+
         persistShadow(uid);
-        try { onRemoteCb({ collection: col, upserts: emittedUpserts, deletes }); } catch (e) { /* caller's problem */ }
+        try { onRemoteCb({ collection: col, upserts: emittedUpserts2, deletes }); } catch (e) { /* caller's problem */ }
       }, (err) => {
         setStatus(err && err.code === 'unavailable' ? 'offline' : 'error');
       });
@@ -444,9 +485,15 @@ export function createClient() {
       const clean = fromRemoteDoc(data);
       const h = hashDoc(clean);
       if (shadow.settings === h) return;
-      shadow = updateShadowSettings(shadow, clean);
-      persistShadow(uid);
-      try { onRemoteCb({ collection: 'settings', upserts: [clean], deletes: [] }); } catch (e) { /* caller's problem */ }
+      // F9: if settings is dirty (pending push), mark it _localPending and skip shadow update.
+      let toEmit = clean;
+      if (dirty.settings) {
+        toEmit = { ...clean, _localPending: true };
+      } else {
+        shadow = updateShadowSettings(shadow, clean);
+        persistShadow(uid);
+      }
+      try { onRemoteCb({ collection: 'settings', upserts: [toEmit], deletes: [] }); } catch (e) { /* caller's problem */ }
     }, (err) => {
       setStatus(err && err.code === 'unavailable' ? 'offline' : 'error');
     });
@@ -464,6 +511,15 @@ export function createClient() {
 
   function push(snapshot) {
     if (!currentUid) return; // signed out: nothing to sync to
+    // F9: Record dirty ids right away (before flushPush is called), so remote updates arriving
+    // during the debounce window can see that these docs are pending local changes.
+    const changes = diff(shadow, snapshot);
+    for (const col of COLLECTIONS) {
+      for (const doc of changes[col].upserts) dirty[col].add(String(doc.id));
+      for (const id of changes[col].deletes) dirty[col].add(String(id));
+    }
+    if (changes.settings.upsert) dirty.settings = true;
+
     pendingSnapshot = snapshot;
     setStatus('pending');
     scheduleFlush(PUSH_DEBOUNCE_MS);
@@ -560,7 +616,25 @@ export function createClient() {
     applyDiffToShadow(changes);
     persistShadow(uid);
 
+    // Capture the exact batch's ids for clearing after dispatch.
+    const dispatchedIds = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
+    for (const col of COLLECTIONS) {
+      for (const doc of changes[col].upserts) dispatchedIds[col].add(String(doc.id));
+      for (const id of changes[col].deletes) dispatchedIds[col].add(String(id));
+    }
+    if (changes.settings.upsert) dispatchedIds.settings = true;
+
     dispatchOps(uid, ops);
+
+    // After dispatchOps returns (writes are in Firestore's local queue), clear the dirty ids
+    // that were just dispatched. This is safe because:
+    // 1. The in-flight counter already covers the upload.
+    // 2. Remote updates arriving now are post-push and will merge cleanly (or collide, which is
+    //    a separate concern).
+    for (const col of COLLECTIONS) {
+      for (const id of dispatchedIds[col]) dirty[col].delete(id);
+    }
+    if (dispatchedIds.settings) dirty.settings = false;
   }
 
   // -------------------------------------------------------------------------
@@ -587,31 +661,38 @@ export function createClient() {
 
   async function firstSync(localSnapshot) {
     if (!currentUid) throw new Error('firstSync() requires a signed-in user');
-    const uid = currentUid;
-    // This read is the one part of firstSync that genuinely needs the network; it's only ever
-    // called right after a successful sign-in/sign-up, so it's expected to be online. If the
-    // connection drops mid-read, getDocs()/getDoc() reject and firstSync rejects with that error
-    // for the caller to show — it does not hang indefinitely.
-    const remote = await fetchRemoteSnapshot(uid);
-    const { merged, upload } = mergeFirstSync(localSnapshot, remote);
+    firstSyncRunning++;
+    refreshStatus();
+    try {
+      const uid = currentUid;
+      // This read is the one part of firstSync that genuinely needs the network; it's only ever
+      // called right after a successful sign-in/sign-up, so it's expected to be online. If the
+      // connection drops mid-read, getDocs()/getDoc() reject and firstSync rejects with that error
+      // for the caller to show — it does not hang indefinitely.
+      const remote = await fetchRemoteSnapshot(uid);
+      const { merged, upload } = mergeFirstSync(localSnapshot, remote);
 
-    const uploadChanges = { settings: { upsert: upload.settings || null } };
-    for (const col of COLLECTIONS) uploadChanges[col] = { upserts: upload[col] || [], deletes: [] };
+      const uploadChanges = { settings: { upsert: upload.settings || null } };
+      for (const col of COLLECTIONS) uploadChanges[col] = { upserts: upload[col] || [], deletes: [] };
 
-    // The shadow must reflect the FULL merged snapshot (local- and remote-origin docs alike) so
-    // the upcoming onSnapshot initial-fetch and the next push() don't re-send anything.
-    shadow = buildShadowFromSnapshot(merged);
-    persistShadow(uid);
+      // The shadow must reflect the FULL merged snapshot (local- and remote-origin docs alike) so
+      // the upcoming onSnapshot initial-fetch and the next push() don't re-send anything.
+      shadow = buildShadowFromSnapshot(merged);
+      persistShadow(uid);
 
-    // Same offline-first rule as push(): dispatch the upload without awaiting the server's ack,
-    // so firstSync resolves right after the writes are queued locally instead of hanging for
-    // however long it takes the network to come back (e.g. if it drops right after login).
-    if (!isDiffEmpty(uploadChanges)) {
-      dispatchOps(uid, buildOpsFromDiff(uid, uploadChanges));
-    } else {
+      // Same offline-first rule as push(): dispatch the upload without awaiting the server's ack,
+      // so firstSync resolves right after the writes are queued locally instead of hanging for
+      // however long it takes the network to come back (e.g. if it drops right after login).
+      if (!isDiffEmpty(uploadChanges)) {
+        dispatchOps(uid, buildOpsFromDiff(uid, uploadChanges));
+      } else {
+        refreshStatus();
+      }
+      return merged;
+    } finally {
+      firstSyncRunning--;
       refreshStatus();
     }
-    return merged;
   }
 
   // -------------------------------------------------------------------------
@@ -640,6 +721,8 @@ export function createClient() {
     const clearCache = !!(opts && opts.clearCache);
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     pendingSnapshot = null;
+    firstSyncRunning = 0;
+    dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
     await firebaseSignOut(auth);
     if (clearCache && db) {
       try { await terminate(db); } catch (e) { /* ignore */ }

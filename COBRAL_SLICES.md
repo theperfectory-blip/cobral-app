@@ -359,13 +359,13 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - [x] F8a · `dispatchOps` didn't refresh the status when it queued writes → "Sincronizado" during a long first upload
       (fixed by Opus: `queueMicrotask(refreshStatus)` at the start of dispatchOps).
 - [x] Dark mode: green amounts / cart line totals / payment amount / "Ver" badge unreadable (fixed by Opus, CSS).
-- [ ] F8b · Status says "Sincronizado" for a few seconds right after sign-in/sign-up, before `firstSync` has even read the
+- [x] F8b · Status says "Sincronizado" for a few seconds right after sign-in/sign-up, before `firstSync` has even read the
       cloud. Module (`cloud-src/cobral-cloud.js`): add `let firstSyncRunning = 0;` — `firstSync()` does
       `firstSyncRunning++; refreshStatus();` at its start and `firstSyncRunning--; refreshStatus();` in a `finally`
       AFTER `dispatchOps` has been called (so the in-flight counter already covers the upload). `refreshStatus()` treats
       `firstSyncRunning>0` like unacked writes (→ 'pending' / 'offline'). App: `finishCloudLogin` must not force a
       'synced' status itself; it only reflects `onStatus`.
-- [ ] F9 · A local edit made less than ~1.5 s before a remote update of the SAME doc is lost (reproduced: price edited to
+- [x] F9 · A local edit made less than ~1.5 s before a remote update of the SAME doc is lost (reproduced: price edited to
       $8.500 on the phone, another device sells that product inside the push debounce window → remote doc overwrites the
       whole product locally, price back to $8.000, nothing pushed). Fix = "local pending wins":
       - Module: keep `dirty = {sales:Set, products:Set, debts:Set, debtHistory:Set, settings:false}`. In `push(snapshot)`
@@ -381,3 +381,20 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
         `saveData()` → `push()` sends the local fields + merged stock (local edit wins, stock stays correct).
       - Tests: unit test for the dirty bookkeeping; e2e step: client A changes product price and pushes (debounce
         pending) while client B sells 1 of that product → both converge to A's price and stock base − 1.
+
+- F9 note (Opus): Haiku's app-side merge deleted `doc._baseStock` before using it → stock NaN; fixed. Verified on the device:
+  regress-sync 5/5 (serialized with settle waits — acks via `adb reverse` can take minutes) and an armed-peer race test:
+  price edit kept (7.000 → 7.700 on phone and cloud).
+- [ ] F10 · Stock as server-side deltas. Armed-peer race still loses a stock decrement: peer sells 1 (stock −1 → −2) while
+      the phone's price edit is in its 1.5 s debounce; the phone's write lands after and blindly sets stock −1. Fix:
+      - Module `buildOpsFromDiff` for products whose id has a known `shadow.stock[id]`: write the doc with
+        `batch.set(ref, dataWithoutStock, { merge: true })` + `stock: increment(local.stock − shadow.stock[id])`
+        (skip the stock field when the delta is 0); products without a known base keep writing the absolute stock.
+        After dispatch set `shadow.stock[id] = local.stock`.
+      - Listener: for products, do NOT skip own-device echoes when `remote.stock !== shadow.stock[id]` (the server value
+        may combine other devices' deltas); emit the upsert with `_baseStock = shadow.stock[id]` so the app's existing
+        three-way merge (`local = remote + (local − base)`) adds the missing deltas; skip only when nothing differs.
+      - Keep F9 (_localPending) and B4 behaviour; `firstSync` keeps absolute values.
+      - Tests: unit tests for the delta computation; e2e: two clients decrement the same product concurrently (A −2,
+        B −1, both pushed before seeing each other, including A's push landing last) → both converge to base − 3 and
+        Firestore holds base − 3; a price edit on A + sale on B in the same window → A's price and base − 1.

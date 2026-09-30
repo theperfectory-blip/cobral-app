@@ -23,24 +23,27 @@ async function until(expr, ms = 20000) { const t = Date.now(); while (Date.now()
 // clean state, emulator mode, seed
 adb('reverse', 'tcp:9099', 'tcp:9099'); adb('reverse', 'tcp:8080', 'tcp:8080');
 adb('shell', 'pm', 'clear', PKG); adb('shell', 'am', 'start', '-n', `${PKG}/.MainActivity`); await ready();
-js("localStorage.setItem('cobralEmulatorHost','127.0.0.1');1");
+const EMU_HOST = process.env.EMU_HOST || '127.0.0.1'; // via adb reverse (acks can be slow: each step first waits for 'synced')
+js(`localStorage.setItem('cobralEmulatorHost','${EMU_HOST}');1`);
 execFileSync('node', [here('./cdp.mjs'), '-f', here('./seed.js')], { encoding: 'utf8' }); await sleep(4000); await ready();
 
 await step('S1', async () => {
   js("(()=>{openNewSale();addToCart(state.products.find(p=>p.name==='Saco').id);state.selectedPayment='efectivo';completeSale();return 1})()"); await sleep(1500);
   const local = js('state.sales.length');
-  js('closeModal();openAccountModal();1'); await sleep(4000);
+  js('closeModal();openAccountModal();1'); if (!await until("!!document.getElementById('cloudEmailInput')", 30000)) throw new Error('account form did not appear');
   js(`(()=>{document.getElementById('cloudEmailInput').value='${EMAIL}';document.getElementById('cloudPassInput').value='${PASS}';return 1})()`);
   tap('#cloudSignUpBtn');
   // the local Firestore emulator needs ~30–40 s for the ~390-doc first upload; status must stay 'pending' meanwhile
   await sleep(4000); const midStatus = js('state.cloudStatus');
-  const ok = await until("state.cloudUser!=null&&state.cloudStatus==='synced'", 180000) && midStatus === 'pending';
+  const ok = await until("state.cloudUser!=null&&state.cloudStatus==='synced'", 300000) && midStatus === 'pending';
   await sleep(3000);
   const cloud = peer('dump');
   check('S1 F1 sign-up uploads every local sale (incl. one made before login); status Pendiente until done', ok && cloud.includes(`sales=${local}`), `status during upload: ${midStatus} | local ${local} | cloud: ${cloud}`);
 });
 
+const settle = async () => { if (!await until("state.cloudUser!=null&&state.cloudStatus==='synced'", 300000)) throw new Error('phone did not settle to synced before the step'); };
 await step('S2', async () => {
+  await settle();
   const n0 = js('state.sales.length');
   peer('add-sale', 'Miel kilo');
   const ok = await until(`state.sales.length===${n0 + 1}`, 45000);
@@ -48,16 +51,18 @@ await step('S2', async () => {
 });
 
 await step('S3', async () => {
+  await settle();
   js('CobralCloud._network(false);1'); await sleep(1000);
   js("(()=>{openNewSale();addToCart(state.products.find(p=>p.name==='Saco').id);state.selectedPayment='efectivo';completeSale();return 1})()"); await sleep(2500);
   const st = js('state.cloudStatus'); const before = peer('dump'); const local = js('state.sales.length');
   js('CobralCloud._network(true);1');
-  const ok = await until("state.cloudStatus==='synced'", 20000); await sleep(2000);
+  const ok = await until("state.cloudStatus==='synced'", 300000); await sleep(2000);
   const after = peer('dump');
   check('S3 offline sale: status offline/pending, uploaded after reconnect', (st === 'offline' || st === 'pending') && !before.includes(`sales=${local}`) && ok && after.includes(`sales=${local}`), `status ${st} | before: ${before} | after: ${after}`);
 });
 
 await step('S4', async () => {
+  await settle();
   const id = js("state.products.find(p=>p.name==='Miel ulmo').id");
   js(`openEditProduct(${id});1`); await sleep(800);
   peer('add-sale', 'Miel ulmo');
@@ -71,10 +76,10 @@ await step('S4', async () => {
 
 await step('S5', async () => {
   js('cloudSignOut();1'); await sleep(2500);
-  js('closeModal();openAccountModal();1'); await sleep(2500);
+  js('closeModal();openAccountModal();1'); if (!await until("!!document.getElementById('cloudEmailInput')", 30000)) throw new Error('account form did not appear');
   js(`(()=>{document.getElementById('cloudEmailInput').value='${EMAIL}';document.getElementById('cloudPassInput').value='${PASS}';return 1})()`);
   tap('#cloudSignInBtn');
-  const ok = await until("state.cloudUser!=null&&state.cloudStatus==='synced'", 30000);
+  const ok = await until("state.cloudUser!=null&&state.cloudStatus==='synced'", 300000);
   check('S5 F5 sign-out + sign-in settles to "Sincronizado" (not stuck in Pendiente)', ok, js('state.cloudStatus'));
 });
 
