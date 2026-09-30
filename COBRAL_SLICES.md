@@ -299,7 +299,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 4. Full dark-mode coverage (`body.dark-mode.desk …`). Chilean Spanish copy. Surgical edits; don't reformat.
 5. `node tools/check.mjs` must print OK. Do not bump version, commit, deploy or touch adb/Firebase.
 
-### [ ] D1 · Desktop shell
+### [x] D1 · Desktop shell
 - Left **sidebar** (fixed, 232 px): Cobral logo + user name; nav Inicio / Ventas / Deudas / Inventario (active state,
   hover, icons from the existing SVG set); bottom block: current location (click → openLocationModal), cloud status
   (same states as the header icon; click → openAccountModal), Configuración (openSettings), dark-mode toggle.
