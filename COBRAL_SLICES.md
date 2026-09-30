@@ -331,7 +331,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
   Total; sortable headers (default newest first); row click → openSaleDetail in a drawer (Eliminar / Modificar still work;
   Modificar opens the edit flow). Show 50 rows + "Mostrar más".
 
-### [ ] D4 · Inventario
+### [x] D4 · Inventario
 - Summary cards: Referencias, Costo inventario, Margen potencial. Toolbar: search, category select, "Exportar vista",
   "Importar CSV", "Nuevo producto".
 - **Table**: Foto (thumb), Nombre, Categoría, Stock (red ≤ 0, amber ≤ 5), Costo, Precio, Margen (existing pill),
