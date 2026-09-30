@@ -324,7 +324,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - Top ventas as a **table**: #, Producto, Categoría, Uds (or g), Ingresos, % del total; sortable by clicking headers;
   row click → existing openTopProductSales (in a drawer).
 
-### [ ] D3 · Ventas
+### [x] D3 · Ventas
 - Toolbar: period bar, payment filter, location filter, search (same matching as getVisibleSales incl. #ticket),
   "Exportar vista", "Nueva venta". KPI strip (Ingresos, Costo, Margen, %) updates live with search (reuse renderSalesStats data).
 - **Table**: # ticket, Fecha y hora, Productos (single line, ellipsis, full list in title tooltip), Ubicación, Pago (badge),
