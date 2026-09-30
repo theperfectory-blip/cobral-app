@@ -2,7 +2,7 @@
 # JS errors/console output from the Cobral WebView since the last `--clear` (only Cobral's own process).
 # Usage: bash tools/errors.sh --clear   (before a test)
 #        bash tools/errors.sh           (after: prints uncaught errors, exit 1 if any)
-ADB="$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe"
+ADB="${ANDROID_HOME:-$LOCALAPPDATA/Android/Sdk}/platform-tools/adb.exe"
 if [[ "${1:-}" == "--clear" ]]; then "$ADB" logcat -c; echo "logcat cleared"; exit 0; fi
 pid=$("$ADB" shell pidof cl.cobral.ventas | tr -d '\r')
 [[ -z "$pid" ]] && { echo "cl.cobral.ventas is not running"; exit 1; }

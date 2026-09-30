@@ -6,8 +6,9 @@
 // The Cobral WebView is edge-to-edge, so device px = CSS px * devicePixelRatio.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
-const ADB = `${process.env.LOCALAPPDATA}\\Android\\Sdk\\platform-tools\\adb.exe`;
+const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk'), 'platform-tools', 'adb.exe');
 const cdp = expr => execFileSync('node', [fileURLToPath(new URL('./cdp.mjs', import.meta.url)), expr], { encoding: 'utf8' }).trim();
 const adb = (...a) => execFileSync(ADB, a, { encoding: 'utf8' });
 

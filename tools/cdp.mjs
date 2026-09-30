@@ -5,8 +5,9 @@
 // Requires a debug APK (WebView debugging on) and the app in the foreground.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-const ADB = `${process.env.LOCALAPPDATA}\\Android\\Sdk\\platform-tools\\adb.exe`;
+const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk'), 'platform-tools', 'adb.exe');
 const PKG = 'cl.cobral.ventas';
 const PORT = 9333;
 

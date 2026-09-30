@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
-const ADB = path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk', 'platform-tools', 'adb.exe');
+const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk'), 'platform-tools', 'adb.exe');
 const pid = execFileSync(ADB, ['shell', 'pidof', 'cl.cobral.ventas'], { encoding: 'utf8' }).trim();
 execFileSync(ADB, ['forward', 'tcp:9333', `localabstract:webview_devtools_remote_${pid}`]);
 const page = (await (await fetch('http://127.0.0.1:9333/json')).json()).find(p => p.type === 'page');

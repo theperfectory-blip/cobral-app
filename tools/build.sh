@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export JAVA_HOME="/c/Users/Administrator/jdk-temurin-21/jdk-21.0.11+10"
-export ANDROID_HOME="$LOCALAPPDATA/Android/Sdk"
+export ANDROID_HOME="${ANDROID_HOME:-$LOCALAPPDATA/Android/Sdk}"  # D:\AndroidData\Sdk on this PC (set as a user env var)
 # This machine cannot create AF_UNIX sockets in %TEMP%; a non-existent dir makes the JDK fall back to TCP loopback.
 export JAVA_TOOL_OPTIONS="-Djdk.net.unixdomain.tmpdir=C:/cobral-no-uds"
 ADB="$ANDROID_HOME/platform-tools/adb.exe"
