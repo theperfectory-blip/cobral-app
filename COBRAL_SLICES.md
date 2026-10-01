@@ -252,7 +252,7 @@ everywhere**; **the cart uses the current location's price**.
     navigations and `.html`/`.js`, cache fallback when offline; versioned cache name; precache `./`, `index.html`,
     `cloud/config.js`, `cloud/cobral-cloud.js`.
 
-### [ ] C2 · Hosting deploy (Opus — ask Jimbo before publishing)
+### [x] C2 · Hosting deploy (Opus — ask Jimbo before publishing)
 - `firebase.json` hosting (public = `www`, no-cache headers for html/js). **Done 2026-09-22:** Hosting site
   `cobral` created (`https://cobral.web.app`, the short name Jimbo asked for — the default `cobral-app` site
   still exists but is unused), wired via `firebase target:apply hosting web cobral` + `"target":"web"` in
@@ -426,3 +426,6 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
   two-pane sale, second device sees it and sells, table updates live, offline → status) 7/7. Headless screenshots at
   1100/1280/1440/1920 light+dark reviewed; 375/900 px pixel-identical to pre-merge mobile web.
 - APK copied to `../Cobral_v6.1.apk`. Web deploy (`firebase deploy --only hosting:web`) still waits for Jimbo's OK.
+- Deployed 2026-10-01 after Jimbo's OK: `firebase deploy --only hosting:web` → https://cobral.web.app serves commit
+  44a76bf (index.html byte-identical, title "Cobral v6.1", sw cache cobral-web-v6.1); live load at 1440 and 390 px shows
+  the login gate with no JS errors and no emulator flag.
