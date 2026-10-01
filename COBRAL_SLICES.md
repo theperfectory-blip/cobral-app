@@ -299,7 +299,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 4. Full dark-mode coverage (`body.dark-mode.desk …`). Chilean Spanish copy. Surgical edits; don't reformat.
 5. `node tools/check.mjs` must print OK. Do not bump version, commit, deploy or touch adb/Firebase.
 
-### [ ] D1 · Desktop shell
+### [x] D1 · Desktop shell
 - Left **sidebar** (fixed, 232 px): Cobral logo + user name; nav Inicio / Ventas / Deudas / Inventario (active state,
   hover, icons from the existing SVG set); bottom block: current location (click → openLocationModal), cloud status
   (same states as the header icon; click → openAccountModal), Configuración (openSettings), dark-mode toggle.
@@ -314,7 +314,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
   (previous/next period, next disabled at the current period) + "Hoy" + calendar button, in one line. Uses the existing
   state fields and goToCurrentPeriod.
 
-### [ ] D2 · Inicio (dashboard)
+### [x] D2 · Inicio (dashboard)
 - Toolbar: period bar, location filter (select), category filter (select), actions "Exportar vista" and "Nueva venta".
 - KPI row (6 cards): Ingresos, Costo, Margen, Margen %, N° ventas, Ticket promedio — for the Top filters (period +
   location). Ticket promedio = ingresos / ventas.
@@ -324,36 +324,45 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - Top ventas as a **table**: #, Producto, Categoría, Uds (or g), Ingresos, % del total; sortable by clicking headers;
   row click → existing openTopProductSales (in a drawer).
 
-### [ ] D3 · Ventas
+### [x] D3 · Ventas
 - Toolbar: period bar, payment filter, location filter, search (same matching as getVisibleSales incl. #ticket),
   "Exportar vista", "Nueva venta". KPI strip (Ingresos, Costo, Margen, %) updates live with search (reuse renderSalesStats data).
 - **Table**: # ticket, Fecha y hora, Productos (single line, ellipsis, full list in title tooltip), Ubicación, Pago (badge),
   Total; sortable headers (default newest first); row click → openSaleDetail in a drawer (Eliminar / Modificar still work;
   Modificar opens the edit flow). Show 50 rows + "Mostrar más".
 
-### [ ] D4 · Inventario
+### [x] D4 · Inventario
 - Summary cards: Referencias, Costo inventario, Margen potencial. Toolbar: search, category select, "Exportar vista",
   "Importar CSV", "Nuevo producto".
 - **Table**: Foto (thumb), Nombre, Categoría, Stock (red ≤ 0, amber ≤ 5), Costo, Precio, Margen (existing pill),
   Precios por ubicación (count or "—"); sortable headers; row click → product editor in a drawer (renderProductModal content).
 
-### [ ] D5 · Deudas
+### [x] D5 · Deudas
 - Two panes: left list of debtors with total owed (tabs Pendientes / Historial), right the selected debtor's detail
   (existing debtor detail/history content inline, with Pagar / Editar / Eliminar actions). Empty state when nothing selected.
 
-### [ ] D6 · Nueva venta (two panes)
+### [x] D6 · Nueva venta (two panes)
 - In desk mode the sale opens in the main area (not a sheet): left search (autofocus) + category chips + product **grid**
   (4–6 columns, A5 halves still work with the mouse: left half −, right half +); right fixed cart panel (lines with qty
   input, price input, line total, remove), totals, payment method buttons with fees, location, "Confirmar venta",
   "Cancelar venta". Debt sales work the same way. Navigating to another page keeps the sale (sidebar "Venta en curso").
 
-### [ ] D7 · Shortcuts + export view
+### [x] D7 · Shortcuts + export view
 - Shortcuts (desk only, ignored while typing in an input except Esc): N = nueva venta, / = focus search of the current
   page, Esc = close drawer (sale: go back / keep sale), ? = shortcuts help popover. Enter in the sale confirms when the
   cart has items and a payment method is selected.
 - "Exportar vista" on Inicio (top table), Ventas (filtered table) and Inventario (sorted/filtered table): CSV with the
   visible columns and current sort, `;` separator, UTF-8 BOM, filename with page + period (e.g. `ventas-2026-09.csv`),
   via the existing downloadCSV.
+
+- D6/D7 note (Opus, 2026-10-01): implemented by Sonnet (Haiku kept breaking desk CSS); Opus fixes: tile grid rows
+  overflowing at 1280 (`grid-auto-rows:max-content`), dark tile borders and "Venta en curso", D5 debtor search losing
+  focus per keystroke, inventory CSV decimals with comma. Review fixes in earlier slices: D3 had removed the mobile
+  sales sort (mobile list was oldest-first); sortable `<th>` had a duplicate `style` attribute (headers lost padding);
+  Ventas/Inicio/Inventario filter rows overflowed below ~1300 px (now wrap, `#content{min-width:0}`); the D2 chart was
+  rewritten as HTML/CSS (SVG with preserveAspectRatio=none distorted/clipped labels, x labels in viewBox units, week
+  bucketed by UTC date) with nice y steps and click-to-drill (week/month → day, year → month). Verified headless at
+  1100/1280/1440/1920 light+dark; 375 and 900 px renders are pixel-identical to main.
 
 ## Post-v6.0 verification fixes (2026-09-30, found by tools/regress.mjs + tools/regress-sync.mjs)
 - [x] F8a · `dispatchOps` didn't refresh the status when it queued writes → "Sincronizado" during a long first upload
