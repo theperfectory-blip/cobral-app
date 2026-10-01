@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, connectAuthEmulator, signInWithEmailAndPassword } from 'firebase/auth';
-import { initializeFirestore, memoryLocalCache, connectFirestoreEmulator, doc, getDoc } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache, connectFirestoreEmulator, doc, getDoc, getDocFromServer } from 'firebase/firestore';
 import { createClient } from '../cloud-src/cobral-cloud.js';
 
 const EMULATOR_HOST = '127.0.0.1';
@@ -289,6 +289,12 @@ async function main() {
     const arr = localState.products;
     for (const doc of change.upserts) {
       const i = arr.findIndex((p) => p.id === doc.id);
+      if (doc._localPending) {
+        // Same as applyRemoteChange: only the stock three-way merge; every other local field is kept.
+        const base = doc._baseStock;
+        if (i >= 0 && typeof base === 'number') arr[i].stock = doc.stock + (arr[i].stock - base);
+        continue;
+      }
       const merged = { ...doc };
       const hasBase = typeof doc._baseStock === 'number';
       delete merged._baseStock;
@@ -500,6 +506,208 @@ async function main() {
     // Full end-to-end test requires app integration and real UI flow.
     assert.ok(true, 'F9 fix implemented: local pending wins for concurrent edits');
   });
+
+
+  // ---------------------------------------------------------------------
+  // F10: stock as server-side deltas (increment) + merge-set writes
+  // ---------------------------------------------------------------------
+  async function makeServerReader(emailAddr) {
+    // A separate, cache-less client that reads the authoritative server document.
+    const app = initializeApp(FIREBASE_CONFIG, 'cobral-reader-' + Math.random().toString(36).slice(2));
+    const rAuth = initializeAuth(app, { persistence: inMemoryPersistence });
+    connectAuthEmulator(rAuth, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true });
+    const rDb = initializeFirestore(app, { localCache: memoryLocalCache() });
+    connectFirestoreEmulator(rDb, EMULATOR_HOST, 8080);
+    await signInWithEmailAndPassword(rAuth, emailAddr, password);
+    return {
+      async product(uid, id) {
+        const snap = await getDocFromServer(doc(rDb, 'users', uid, 'products', String(id)));
+        return snap.exists() ? snap.data() : null;
+      },
+      close: () => deleteApp(app),
+    };
+  }
+
+  const pStock = (clientObj, id) => clientObj.state.products.find((p) => p.id === id).stock;
+  const pDoc = (clientObj, id) => clientObj.state.products.find((p) => p.id === id);
+
+  // Two devices (x = "A", y = "B") of one fresh account, both holding one product at stock 10.
+  async function setupPair(tag, extraProductFields = {}) {
+    const emailAddr = uniqueEmail(tag);
+    const x = newClient();
+    const y = newClient();
+    const id = Date.now() + 5000 + Math.floor(Math.random() * 1000);
+    const su = await x.client.signUp(emailAddr, password);
+    assert.equal(su.ok, true, JSON.stringify(su));
+    await waitUntil(() => x.client.currentUser() !== null, { label: tag + ': A auth' });
+    const mergedX = await x.client.firstSync(sampleSnapshot({
+      products: [{ id, name: 'F10 item', costPrice: 100, salePrice: 200, stock: 10, unit: 'u', category: 'General', image: null, offers: [], gramStep: 250, ...extraProductFields }],
+    }));
+    x.state = { products: mergedX.products.map((p) => ({ ...p })) };
+    await waitUntil(() => x.client.status() === 'synced', { timeout: 10000, label: tag + ": A's initial upload acked" });
+    const si = await y.client.signIn(emailAddr, password);
+    assert.equal(si.ok, true, JSON.stringify(si));
+    await waitUntil(() => y.client.currentUser() !== null, { label: tag + ': B auth' });
+    const mergedY = await y.client.firstSync(sampleSnapshot());
+    y.state = { products: mergedY.products.map((p) => ({ ...p })) };
+    assert.equal(pStock(y, id), 10, tag + ': B starts from the same cloud stock');
+    await sleep(500); // let firstSync listener noise settle before counting events
+    const reader = await makeServerReader(emailAddr);
+    const uid = x.client.currentUser().uid;
+    const xc = { i: x.rec.remoteEvents.length };
+    const yc = { i: y.rec.remoteEvents.length };
+    return { x, y, id, uid, reader, xc, yc };
+  }
+
+  // Applies every new product event on both devices like the app would; returns how many were processed.
+  function pump(pair) {
+    return processNewProductEvents(pair.x, pair.id, pair.xc) + processNewProductEvents(pair.y, pair.id, pair.yc);
+  }
+
+  // Waits until both devices hold `stock` locally (applying events as they arrive), then requires a quiet,
+  // fully-acked period with no further events and no extra writes (no ping-pong).
+  async function convergeTo(pair, stock, label) {
+    await waitUntil(() => { pump(pair); return pStock(pair.x, pair.id) === stock && pStock(pair.y, pair.id) === stock; }, { timeout: 12000, label: label + ': both devices locally at ' + stock });
+    await waitUntil(() => { pump(pair); return pair.x.client.status() === 'synced' && pair.y.client.status() === 'synced'; }, { timeout: 12000, label: label + ': both synced' });
+    const before = pair.x.client._debugStats().writesDispatched + pair.y.client._debugStats().writesDispatched;
+    await sleep(2500);
+    assert.equal(pump(pair), 0, label + ': no further product events once converged');
+    assert.equal(pair.x.client._debugStats().writesDispatched + pair.y.client._debugStats().writesDispatched, before, label + ': no ping-pong writes');
+    assert.equal(pStock(pair.x, pair.id), stock, label + ': A still at ' + stock);
+    assert.equal(pStock(pair.y, pair.id), stock, label + ': B still at ' + stock);
+  }
+
+  async function waitDispatched(clientObj, before, label) {
+    await waitUntil(() => clientObj.client._debugStats().writesDispatched > before, { timeout: 6000, label });
+  }
+
+  let f10a;
+  await step('F10 (1) setup: A and B on the same account start from stock 10; firstSync wrote the absolute stock', async () => {
+    f10a = await setupPair('f10a');
+    const server = await f10a.reader.product(f10a.uid, f10a.id);
+    assert.equal(server.stock, 10, 'firstSync keeps absolute stock values');
+  });
+
+  await step("F10 (1): A -2 and B -1, both pushed before seeing each other, A's commit lands LAST -> both converge to 7, Firestore holds 7", async () => {
+    const { x, y, id, uid, reader } = f10a;
+    // A sells 2 while OFFLINE: its batch is dispatched into the local queue (increment(-2)) but cannot reach the server yet.
+    await x.client._network(false);
+    pDoc(x, id).stock -= 2;
+    const xBefore = x.client._debugStats().writesDispatched;
+    x.client.push(snapshotFromState(x.state));
+    await waitDispatched(x, xBefore, "A's offline -2 dispatch");
+
+    // B sells 1 and lands on the server first.
+    pDoc(y, id).stock -= 1;
+    const yBefore = y.client._debugStats().writesDispatched;
+    y.client.push(snapshotFromState(y.state));
+    await waitDispatched(y, yBefore, "B's -1 dispatch");
+    await waitUntil(() => y.client.status() === 'synced', { timeout: 10000, label: "B's -1 acked by the server" });
+    assert.equal((await reader.product(uid, id)).stock, 9, 'server holds 9 after B, A has not landed yet');
+    assert.equal(pStock(x, id), 8, 'A has not seen B: still 8 locally');
+
+    // A comes back online: its queued increment(-2) lands LAST on top of B's.
+    await x.client._network(true);
+    await convergeTo(f10a, 7, 'F10 (1)');
+    assert.equal((await reader.product(uid, id)).stock, 7, 'Firestore holds base - 3');
+  });
+
+  await step('F10 (1b): same race in the other order (B lands last) also converges to base - 3', async () => {
+    const { x, y, id, uid, reader } = f10a; // both at 7 now; A -2 (lands first), B -1 (offline -> lands last)
+    await y.client._network(false);
+    pDoc(y, id).stock -= 1;
+    const yBefore = y.client._debugStats().writesDispatched;
+    y.client.push(snapshotFromState(y.state));
+    await waitDispatched(y, yBefore, "B's offline -1 dispatch");
+
+    pDoc(x, id).stock -= 2;
+    const xBefore = x.client._debugStats().writesDispatched;
+    x.client.push(snapshotFromState(x.state));
+    await waitDispatched(x, xBefore, "A's -2 dispatch");
+    await waitUntil(() => x.client.status() === 'synced', { timeout: 10000, label: "A's -2 acked by the server" });
+    assert.equal((await reader.product(uid, id)).stock, 5, 'server holds 5 after A');
+
+    await y.client._network(true);
+    await convergeTo(f10a, 4, 'F10 (1b)');
+    assert.equal((await reader.product(uid, id)).stock, 4);
+  });
+
+  let f10b;
+  await step('F10 (2) setup: fresh pair with a locationPrices entry, stock 10', async () => {
+    f10b = await setupPair('f10b', { locationPrices: { Feria: 1500 } });
+    assert.deepEqual((await f10b.reader.product(f10b.uid, f10b.id)).locationPrices, { Feria: 1500 });
+  });
+
+  await step("F10 (2a): A's price edit (and locationPrices removal) lands AFTER B's sale, A never saw B's write -> A's price, stock base - 1, locationPrices gone", async () => {
+    const { x, y, id, uid, reader } = f10b;
+    // A edits the price and removes locationPrices; it is offline so B's update cannot reach it before its write lands.
+    await x.client._network(false);
+    const a = pDoc(x, id);
+    a.salePrice = 250;
+    delete a.locationPrices;
+    const xBefore = x.client._debugStats().writesDispatched;
+    x.client.push(snapshotFromState(x.state));
+    await waitDispatched(x, xBefore, "A's offline price edit dispatch");
+
+    // B sells 1 (stock 10 -> 9) and lands on the server first.
+    pDoc(y, id).stock -= 1;
+    const yBefore = y.client._debugStats().writesDispatched;
+    y.client.push(snapshotFromState(y.state));
+    await waitDispatched(y, yBefore, "B's -1 dispatch");
+    await waitUntil(() => y.client.status() === 'synced', { timeout: 10000, label: "B's sale acked" });
+    assert.equal((await reader.product(uid, id)).stock, 9);
+
+    // A's blind price write now lands last. Before F10 it set the whole doc (stock 10) and lost B's decrement.
+    await x.client._network(true);
+    await convergeTo(f10b, 9, 'F10 (2a)');
+    const server = await reader.product(uid, id);
+    assert.equal(server.stock, 9, "B's decrement must survive A's later write");
+    assert.equal(server.salePrice, 250, "A's price edit must be on the server");
+    assert.equal('locationPrices' in server, false, 'a locally removed optional field must be removed from the cloud (deleteField)');
+    for (const c of [x, y]) {
+      assert.equal(pDoc(c, id).salePrice, 250, 'price converged');
+      assert.equal('locationPrices' in pDoc(c, id), false, 'locationPrices removal converged');
+    }
+  });
+
+  await step("F10 (2b): A edits the price, B's sale arrives inside A's push debounce (F9 _localPending path) -> A's price and stock base - 1", async () => {
+    const { x, y, id, uid, reader } = f10b; // both at stock 9, price 250
+    pDoc(x, id).salePrice = 300;
+    x.client.push(snapshotFromState(x.state));
+    pDoc(y, id).stock -= 1;
+    const yBefore = y.client._debugStats().writesDispatched;
+    y.client.push(snapshotFromState(y.state));
+    // Keep A's debounce window open (each push() re-arms the ~1.5 s timer) until B's write has reached A.
+    const seen = () => x.rec.remoteEvents.slice(f10b.xc.i).find((e) => e.collection === 'products' && e.upserts.some((d) => d.id === id));
+    await waitUntil(() => {
+      x.client.push(snapshotFromState(x.state));
+      return seen();
+    }, { timeout: 10000, interval: 300, label: "B's sale to reach A while A's price edit is still pending" });
+    assert.ok(y.client._debugStats().writesDispatched > yBefore, "B's write was dispatched");
+    assert.equal(seen().upserts.find((d) => d.id === id)._localPending, true, "A's pending edit must be flagged _localPending");
+    assert.equal(pDoc(x, id).salePrice, 300, 'A has not flushed yet');
+
+    await convergeTo(f10b, 8, 'F10 (2b)');
+    const server = await reader.product(uid, id);
+    assert.equal(server.stock, 8);
+    assert.equal(server.salePrice, 300, "A's price edit wins");
+    assert.equal(pDoc(y, id).salePrice, 300, 'B converged to the new price');
+  });
+
+  await step('F10: a product with no known base (new product) is written with its absolute stock', async () => {
+    const { x, uid, reader } = f10b;
+    const newId = f10b.id + 77;
+    x.state.products.push({ id: newId, name: 'Brand new', costPrice: 10, salePrice: 20, stock: 4, unit: 'u', category: 'General', image: null, offers: [], gramStep: 250 });
+    x.client.push(snapshotFromState(x.state));
+    await waitUntil(async () => (await reader.product(uid, newId)) !== null, { timeout: 10000, label: 'new product to reach the server' });
+    assert.equal((await reader.product(uid, newId)).stock, 4);
+  });
+
+  for (const pair of [f10a, f10b]) {
+    await pair.x.client.signOut();
+    await pair.y.client.signOut();
+    await pair.reader.close();
+  }
 
   // --------- ---------------------------------------------------------
   await a.client.signOut();

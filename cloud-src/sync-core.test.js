@@ -20,6 +20,11 @@ import {
   mergeFirstSync,
   stockMapFromProducts,
   attachBaseStock,
+  OPTIONAL_PRODUCT_KEYS,
+  stockDelta,
+  optionalKeysToDelete,
+  planProductWrite,
+  ownEchoHasStockDrift,
 } from './sync-core.js';
 
 function emptySnapshot() {
@@ -335,4 +340,65 @@ test('B4 scenario: remote update with no local change yields exactly the remote 
   const localStock = base; // no local change at all
   const merged = withBase.stock + (localStock - withBase._baseStock);
   assert.equal(merged, base - 1, 'no local delta means the merge must equal the remote value exactly');
+});
+
+// ---------------------------------------------------------------------------
+// F10: stock as server-side deltas
+// ---------------------------------------------------------------------------
+
+test('F10 stockDelta: local - shadow when both are numbers (including 0 and negatives)', () => {
+  assert.equal(stockDelta({ 1: 10 }, { id: 1, stock: 8 }), -2);
+  assert.equal(stockDelta({ 1: 10 }, { id: 1, stock: 10 }), 0);
+  assert.equal(stockDelta({ 1: -1 }, { id: 1, stock: -2 }), -1);
+  assert.equal(stockDelta({ 1: 0 }, { id: 1, stock: 5 }), 5);
+});
+
+test('F10 stockDelta: null when the base or the local stock is unknown / not a finite number', () => {
+  assert.equal(stockDelta({}, { id: 1, stock: 8 }), null);
+  assert.equal(stockDelta(undefined, { id: 1, stock: 8 }), null);
+  assert.equal(stockDelta({ 1: 10 }, { id: 1 }), null);
+  assert.equal(stockDelta({ 1: 10 }, { id: 1, stock: '8' }), null);
+  assert.equal(stockDelta({ 1: NaN }, { id: 1, stock: 8 }), null);
+  assert.equal(stockDelta({ 1: 10 }, { id: 1, stock: Infinity }), null);
+  assert.equal(stockDelta({ 1: 10 }, null), null);
+});
+
+test('F10 optionalKeysToDelete: lists known optional keys that are absent locally', () => {
+  assert.deepEqual(optionalKeysToDelete({ id: 1, name: 'x', offers: [], gramStep: 250 }), ['locationPrices']);
+  assert.deepEqual(optionalKeysToDelete({ id: 1, locationPrices: { A: 1 }, offers: [], gramStep: 1 }), []);
+  assert.deepEqual(optionalKeysToDelete({ id: 1 }).sort(), [...OPTIONAL_PRODUCT_KEYS].sort());
+  assert.ok(OPTIONAL_PRODUCT_KEYS.includes('locationPrices') && OPTIONAL_PRODUCT_KEYS.includes('offers'));
+});
+
+test('F10 planProductWrite: known base -> delta mode; unknown base or absolute flag -> absolute mode', () => {
+  const doc = { id: 7, stock: 7, offers: [], gramStep: 250 };
+  assert.deepEqual(planProductWrite({ 7: 10 }, doc), { mode: 'delta', delta: -3, deleteKeys: ['locationPrices'] });
+  assert.deepEqual(planProductWrite({ 7: 7 }, doc), { mode: 'delta', delta: 0, deleteKeys: ['locationPrices'] });
+  assert.deepEqual(planProductWrite({}, doc), { mode: 'absolute' });
+  assert.deepEqual(planProductWrite({ 7: 10 }, doc, { absolute: true }), { mode: 'absolute' });
+  assert.deepEqual(planProductWrite({ 7: 10 }, { id: 7, name: 'no stock' }), { mode: 'absolute' });
+});
+
+test('F10 ownEchoHasStockDrift: only when base and remote stock are numbers and differ', () => {
+  assert.equal(ownEchoHasStockDrift({ 1: 8 }, 1, 7), true);
+  assert.equal(ownEchoHasStockDrift({ 1: 8 }, '1', 7), true);
+  assert.equal(ownEchoHasStockDrift({ 1: 8 }, 1, 8), false);
+  assert.equal(ownEchoHasStockDrift({}, 1, 8), false);
+  assert.equal(ownEchoHasStockDrift({ 1: 8 }, 1, undefined), false);
+});
+
+test('F10 scenario: A -2 and B -1 as increments converge to base-3 regardless of which lands last', () => {
+  const base = 10;
+  const a = planProductWrite({ 1: base }, { id: 1, stock: base - 2 });
+  const b = planProductWrite({ 1: base }, { id: 1, stock: base - 1 });
+  assert.equal(base + b.delta + a.delta, 7);
+  assert.equal(base + a.delta + b.delta, 7);
+});
+
+test('F10 scenario: own echo with the merged server stock is merged back via _baseStock (A sees 7, local 8, base 8)', () => {
+  const shadowStock = { 1: 8 }; // A dispatched -2 and set shadow to its local 8
+  assert.equal(ownEchoHasStockDrift(shadowStock, 1, 7), true);
+  const [withBase] = attachBaseStock(shadowStock, [{ id: 1, stock: 7 }]);
+  assert.equal(withBase._baseStock, 8);
+  assert.equal(withBase.stock + (8 - withBase._baseStock), 7);
 });

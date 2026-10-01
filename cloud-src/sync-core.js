@@ -142,6 +142,55 @@ export function attachBaseStock(shadowStockMap, upserts) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// F10: stock as server-side deltas.
+// A product whose id has a known shadow.stock[id] (the stock value this device last knew was in the
+// cloud) is written with set(..., {merge:true}) + stock: increment(local.stock - shadow.stock[id]),
+// so concurrent decrements from several devices add up on the server instead of overwriting each
+// other. Products without a known base (new ones, firstSync uploads) keep writing the absolute stock.
+// ---------------------------------------------------------------------------
+
+/** Product keys that are optional in the app (may be absent from a local doc). Because a merge-set never
+ *  removes fields, a key that is absent locally must be written as deleteField() or the old value would
+ *  survive in the cloud and come back on other devices (e.g. removing the last locationPrices entry). */
+export const OPTIONAL_PRODUCT_KEYS = ['locationPrices', 'offers', 'gramStep'];
+
+/** stock delta vs the shadow base: a number (may be 0) when BOTH the base and doc.stock are finite numbers,
+ *  otherwise null ("unknown base" -> caller writes the absolute stock). Pure. */
+export function stockDelta(shadowStockMap, doc) {
+  if (!doc) return null;
+  const known = (shadowStockMap || {})[String(doc.id)];
+  if (typeof known !== 'number' || typeof doc.stock !== 'number') return null;
+  if (!Number.isFinite(known) || !Number.isFinite(doc.stock)) return null;
+  return doc.stock - known;
+}
+
+/** Optional product keys that are absent from the local doc (to be written as deleteField()). */
+export function optionalKeysToDelete(doc) {
+  return OPTIONAL_PRODUCT_KEYS.filter((k) => !doc || !(k in doc) || doc[k] === undefined);
+}
+
+/**
+ * Plans how to write one product upsert.
+ *   { mode:'absolute' }                                   -> normal set() with the whole doc (incl. stock)
+ *   { mode:'delta', delta:number, deleteKeys:string[] }   -> set(doc minus stock, {merge:true}) + (delta !== 0 ?
+ *                                                            stock: increment(delta) : no stock field) + deleteField() per deleteKeys
+ * `absolute:true` forces the first mode (firstSync uploads). Pure.
+ */
+export function planProductWrite(shadowStockMap, doc, { absolute = false } = {}) {
+  if (absolute) return { mode: 'absolute' };
+  const delta = stockDelta(shadowStockMap, doc);
+  if (delta === null) return { mode: 'absolute' };
+  return { mode: 'delta', delta, deleteKeys: optionalKeysToDelete(doc) };
+}
+
+/** True when an own-device echo of a product carries a stock different from shadow.stock[id], i.e. the server
+ *  value already includes other devices' deltas and must NOT be skipped. Pure. */
+export function ownEchoHasStockDrift(shadowStockMap, id, remoteStock) {
+  const known = (shadowStockMap || {})[String(id)];
+  return typeof known === 'number' && typeof remoteStock === 'number' && known !== remoteStock;
+}
+
 /** Builds a shadow that exactly matches a snapshot (used right after firstSync / a full push). */
 export function buildShadowFromSnapshot(snapshot) {
   const shadow = emptyShadow();

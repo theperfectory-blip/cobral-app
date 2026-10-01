@@ -385,7 +385,7 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - F9 note (Opus): Haiku's app-side merge deleted `doc._baseStock` before using it → stock NaN; fixed. Verified on the device:
   regress-sync 5/5 (serialized with settle waits — acks via `adb reverse` can take minutes) and an armed-peer race test:
   price edit kept (7.000 → 7.700 on phone and cloud).
-- [ ] F10 · Stock as server-side deltas. Armed-peer race still loses a stock decrement: peer sells 1 (stock −1 → −2) while
+- [x] F10 · Stock as server-side deltas. Armed-peer race still loses a stock decrement: peer sells 1 (stock −1 → −2) while
       the phone's price edit is in its 1.5 s debounce; the phone's write lands after and blindly sets stock −1. Fix:
       - Module `buildOpsFromDiff` for products whose id has a known `shadow.stock[id]`: write the doc with
         `batch.set(ref, dataWithoutStock, { merge: true })` + `stock: increment(local.stock − shadow.stock[id])`
@@ -398,3 +398,11 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
       - Tests: unit tests for the delta computation; e2e: two clients decrement the same product concurrently (A −2,
         B −1, both pushed before seeing each other, including A's push landing last) → both converge to base − 3 and
         Firestore holds base − 3; a price edit on A + sale on B in the same window → A's price and base − 1.
+- F10 note (Opus, 2026-10-01): Sonnet's implementation verified (unit 40/40, e2e 26/26, device regress 18/18, regress-sync
+  5/5). The device race still diverged once: cloud = new price, phone silently back to the OLD price with status
+  "Sincronizado". Cause: `flushPush` cleared the F9 dirty ids right after `commit()`, but Firestore applies the write to
+  its local cache asynchronously, so an already-queued server snapshot (the peer's sale) was delivered without
+  `hasPendingWrites` and treated as a clean remote (overwrote the local edit + shadow); the later own echo was skipped.
+  Fix: an id stays dirty until the listener first sees our pending write for it (or its commit settles), unless a newer
+  push re-dirtied it (per-id sequence tokens). New `tools/race.sh <email> <pass>`: 5 armed-peer races with the remote
+  sale fired 0–1.6 s before "Guardar" → 5/5 converge (new price, stock base−1 on phone and cloud).

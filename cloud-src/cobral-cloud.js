@@ -81,6 +81,17 @@
 //
 //   status() -> 'signed-out' | 'offline' | 'pending' | 'synced' | 'error'
 //
+// F10 (stock as server-side deltas): a PRODUCT upsert whose id has a known shadow.stock[id] is written as
+//   set(ref, { ...local fields except stock, _deleted:false, _device, _updatedAt,
+//              locationPrices/offers/gramStep: deleteField() when absent locally,
+//              stock: increment(local.stock - shadow.stock[id])  // only when the delta is not 0 }, { merge:true })
+// so concurrent stock changes from several devices add up on the server. Products without a known base (new
+// products, firstSync uploads) keep writing the absolute stock with a normal set(). The listener no longer skips
+// an own-device echo of a product whose stock differs from shadow.stock (the server value includes other
+// devices' deltas); it is emitted with _baseStock = shadow.stock[id] so the app's three-way merge adds them.
+// Known edge: if another device tombstoned the product and this device (not yet aware) writes a delta, the
+// doc is resurrected with stock = delta only (delete vs edit is last-write-wins anyway).
+//
 // Data model on the wire: users/{uid}/{sales|products|debts|debtHistory}/{String(id)} and
 // users/{uid}/meta/settings. Every doc carries _updatedAt (serverTimestamp), _deleted (bool,
 // tombstone) and _device (random id, persisted in localStorage) — last write wins per document.
@@ -116,6 +127,8 @@ import {
   serverTimestamp,
   terminate,
   clearIndexedDbPersistence,
+  increment,
+  deleteField,
 } from 'firebase/firestore';
 import {
   COLLECTIONS,
@@ -132,6 +145,8 @@ import {
   updateShadowSettings,
   emptyShadow,
   attachBaseStock,
+  planProductWrite,
+  ownEchoHasStockDrift,
 } from './sync-core.js';
 
 const MAX_BATCH_OPS = 450;
@@ -236,6 +251,29 @@ export function createClient() {
   // arrives for a dirty doc, we emit _localPending:true and skip the shadow update (except
   // for products where we still update shadowStock) so the pending local version wins.
   let dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
+  // dirtySeq: "col/id" → seq of the latest push() that dirtied it; awaiting: "col/id" → that seq at
+  // dispatch time. An id is released (un-dirtied) only if no newer push() re-dirtied it since.
+  let dirtySeq = new Map();
+  let awaiting = new Map();
+  let seqCounter = 0;
+  function markDirty(col, id) {
+    if (col === 'settings') dirty.settings = true; else dirty[col].add(id);
+    dirtySeq.set(col + '/' + id, ++seqCounter);
+  }
+  function awaitRelease(col, id) {
+    const key = col + '/' + id;
+    awaiting.set(key, dirtySeq.get(key));
+  }
+  function releaseDirty(col, id, expected) {
+    const key = col + '/' + id;
+    if (!awaiting.has(key)) return;
+    const token = awaiting.get(key);
+    if (expected !== undefined && token !== expected) return; // a newer dispatch owns this id now
+    awaiting.delete(key);
+    if (dirtySeq.get(key) !== token) return; // re-dirtied by a newer push(): still pending
+    dirtySeq.delete(key);
+    if (col === 'settings') dirty.settings = false; else dirty[col].delete(id);
+  }
 
   // Session generation: incremented each time onAuthStateChanged fires with a non-null user.
   // Each batch.commit() captures the current gen; if it doesn't match authGen when the promise
@@ -381,6 +419,8 @@ export function createClient() {
         debugStats.commitsInFlight = 0;
         listenerPending = {};
         dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
+        dirtySeq = new Map();
+        awaiting = new Map();
 
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
@@ -418,9 +458,14 @@ export function createClient() {
         const upserts = [];
         const deletes = [];
         for (const change of snap.docChanges()) {
-          if (change.doc.metadata.hasPendingWrites) continue; // our own write, not yet acked
+          if (change.doc.metadata.hasPendingWrites) { releaseDirty(col, change.doc.id); continue; } // our own write, now in the local cache (not yet acked)
           const data = change.doc.data();
-          if (data && data._device === device) continue; // our own device's acked echo
+          if (data && data._device === device) {
+            // Our own device's acked echo: skip it, EXCEPT a product whose server stock differs from
+            // shadow.stock (F10: the server value may already include other devices' increments).
+            const keep = col === 'products' && !data._deleted && ownEchoHasStockDrift(shadow.stock, change.doc.id, data.stock);
+            if (!keep) continue;
+          }
           const idStr = change.doc.id;
           if (data && data._deleted) {
             if (shadow[col] && idStr in shadow[col]) deletes.push(coerceId(idStr));
@@ -478,6 +523,7 @@ export function createClient() {
       listenerPending.settings = !!snap.metadata.hasPendingWrites;
       refreshStatus();
 
+      if (snap.metadata.hasPendingWrites) releaseDirty('settings', 'settings');
       if (!snap.exists()) return;
       if (snap.metadata.hasPendingWrites) return;
       const data = snap.data();
@@ -515,10 +561,10 @@ export function createClient() {
     // during the debounce window can see that these docs are pending local changes.
     const changes = diff(shadow, snapshot);
     for (const col of COLLECTIONS) {
-      for (const doc of changes[col].upserts) dirty[col].add(String(doc.id));
-      for (const id of changes[col].deletes) dirty[col].add(String(id));
+      for (const doc of changes[col].upserts) markDirty(col, String(doc.id));
+      for (const id of changes[col].deletes) markDirty(col, String(id));
     }
-    if (changes.settings.upsert) dirty.settings = true;
+    if (changes.settings.upsert) markDirty('settings', 'settings');
 
     pendingSnapshot = snapshot;
     setStatus('pending');
@@ -531,11 +577,26 @@ export function createClient() {
     shadow = col === 'settings' ? updateShadowSettings(shadow, null) : updateShadowForCollection(shadow, col, [], [id]);
   }
 
-  function buildOpsFromDiff(uid, changes) {
+  /** F10 write shape for a product with a known shadow.stock base:
+   *    batch.set(ref, { ...allLocalFieldsExceptStock, _deleted:false, _device, _updatedAt, <optionalKey>: deleteField() for each
+   *                     optional key absent locally, stock: increment(local.stock - shadow.stock[id]) only when delta !== 0 }, { merge:true })
+   *  Must be called BEFORE applyDiffToShadow (which advances shadow.stock to the local value). */
+  function buildOpsFromDiff(uid, changes, { absoluteStock = false } = {}) {
     const ops = [];
     for (const col of COLLECTIONS) {
       for (const d of changes[col].upserts) {
-        ops.push({ collectionName: col, docId: String(d.id), ref: docRef(uid, col, d.id), data: { ...toRemoteData(d, device), _updatedAt: serverTimestamp() } });
+        let data = { ...toRemoteData(d, device), _updatedAt: serverTimestamp() };
+        let merge = false;
+        if (col === 'products') {
+          const plan = planProductWrite(shadow.stock, d, { absolute: absoluteStock });
+          if (plan.mode === 'delta') {
+            merge = true;
+            delete data.stock;
+            for (const k of plan.deleteKeys) data[k] = deleteField();
+            if (plan.delta !== 0) data.stock = increment(plan.delta);
+          }
+        }
+        ops.push({ collectionName: col, docId: String(d.id), ref: docRef(uid, col, d.id), data, merge });
       }
       for (const id of changes[col].deletes) {
         ops.push({ collectionName: col, docId: String(id), ref: docRef(uid, col, id), data: { ...toTombstone(id, device), _updatedAt: serverTimestamp() } });
@@ -571,11 +632,15 @@ export function createClient() {
     for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
       const chunk = ops.slice(i, i + MAX_BATCH_OPS);
       const batch = writeBatch(db);
-      for (const op of chunk) batch.set(op.ref, op.data);
+      for (const op of chunk) { if (op.merge) batch.set(op.ref, op.data, { merge: true }); else batch.set(op.ref, op.data); }
 
       // Capture the current auth generation so we can ignore this commit's result if the auth
       // session changes (e.g. user signed out and someone else signed in) before the batch settles.
       const gen = authGen;
+      // Fallback release of the dirty marks (normally released when the listener first sees the
+      // pending write); tokens captured now so a later dispatch of the same id isn't released early.
+      const tokens = chunk.map((op) => awaiting.get(op.collectionName + '/' + op.docId));
+      const releaseChunk = () => chunk.forEach((op, k) => { if (tokens[k] !== undefined) releaseDirty(op.collectionName, op.docId, tokens[k]); });
 
       inFlightCommits++;
       debugStats.commitsInFlight = inFlightCommits;
@@ -585,11 +650,13 @@ export function createClient() {
         if (gen !== authGen) return; // commit from a previous auth session; ignore
         inFlightCommits--;
         debugStats.commitsInFlight = inFlightCommits;
+        releaseChunk();
         refreshStatus();
       }).catch((err) => {
         if (gen !== authGen) return; // commit from a previous auth session; ignore
         inFlightCommits--;
         debugStats.commitsInFlight = inFlightCommits;
+        releaseChunk();
         for (const op of chunk) forgetShadowEntry(op.collectionName, op.docId);
         persistShadow(uid);
         setStatus('error');
@@ -624,17 +691,18 @@ export function createClient() {
     }
     if (changes.settings.upsert) dispatchedIds.settings = true;
 
-    dispatchOps(uid, ops);
-
-    // After dispatchOps returns (writes are in Firestore's local queue), clear the dirty ids
-    // that were just dispatched. This is safe because:
-    // 1. The in-flight counter already covers the upload.
-    // 2. Remote updates arriving now are post-push and will merge cleanly (or collide, which is
-    //    a separate concern).
+    // Do NOT clear the dirty ids here: commit() applies the write to Firestore's local cache
+    // asynchronously, so a server snapshot already queued (another device's write) can still be
+    // delivered WITHOUT hasPendingWrites. Treated as a clean remote, it would overwrite the local
+    // edit and the shadow, and the later own-device echo is skipped → silent divergence (seen in
+    // the armed-peer race). Release each id once the listener sees our pending write in the
+    // cache, or when its commit settles (fallback), unless a newer push() re-dirtied it.
     for (const col of COLLECTIONS) {
-      for (const id of dispatchedIds[col]) dirty[col].delete(id);
+      for (const id of dispatchedIds[col]) awaitRelease(col, id);
     }
-    if (dispatchedIds.settings) dirty.settings = false;
+    if (dispatchedIds.settings) awaitRelease('settings', 'settings');
+
+    dispatchOps(uid, ops);
   }
 
   // -------------------------------------------------------------------------
@@ -684,7 +752,8 @@ export function createClient() {
       // so firstSync resolves right after the writes are queued locally instead of hanging for
       // however long it takes the network to come back (e.g. if it drops right after login).
       if (!isDiffEmpty(uploadChanges)) {
-        dispatchOps(uid, buildOpsFromDiff(uid, uploadChanges));
+        // firstSync keeps absolute stock values (no delta base exists for these docs on the server).
+        dispatchOps(uid, buildOpsFromDiff(uid, uploadChanges, { absoluteStock: true }));
       } else {
         refreshStatus();
       }
@@ -723,6 +792,8 @@ export function createClient() {
     pendingSnapshot = null;
     firstSyncRunning = 0;
     dirty = { sales: new Set(), products: new Set(), debts: new Set(), debtHistory: new Set(), settings: false };
+    dirtySeq = new Map();
+    awaiting = new Map();
     await firebaseSignOut(auth);
     if (clearCache && db) {
       try { await terminate(db); } catch (e) { /* ignore */ }
