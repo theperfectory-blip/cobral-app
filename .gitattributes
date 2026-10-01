@@ -1,0 +1,18 @@
+# Text files are stored and checked out with LF (the app was edited from Windows tools that wrote CRLF).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.apk binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.mp3 binary
+*.wav binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
