@@ -36,8 +36,11 @@ await step('R02 A1 search', async () => {
   tap('.nav-item[data-tab=sales]'); await sleep(500);
   js("state.filterPeriod='year';render();1"); await sleep(300);
   tap('#salesSearchInput'); await sleep(300); type('Miel'); await sleep(900); hideKb();
+  // adb typing sometimes drops/adds keys; the check is about live totals, so make sure the query really is 'Miel'
+  const typed = js("document.getElementById('salesSearchInput').value");
+  if (typed !== 'Miel') { console.log(`  (typed "${typed}", retrying via input event)`); js("(()=>{const e=document.getElementById('salesSearchInput');e.value='Miel';e.dispatchEvent(new Event('input'));return 1})()"); await sleep(500); }
   const r = js("(()=>{const v=getVisibleSales();const shown=document.getElementById('salesStats').innerText;return {rows:document.querySelectorAll('#salesList .sale-item').length,n:v.length,exp:formatMoney(v.reduce((s,x)=>s+x.finalAmount,0)),shown,all:v.every(s=>s.items.some(i=>/miel/i.test(i.name)))}})()");
-  check('R02 A1 live totals on search', r.rows === r.n && r.shown.includes(r.exp) && r.all, `${r.n} ventas, ${r.exp}`);
+  check('R02 A1 live totals on search', r.n > 0 && r.rows === r.n && r.shown.includes(r.exp) && r.all,`${r.n} ventas, ${r.exp}`);
   js("document.getElementById('salesSearchInput').value='#12';updateSalesSearch('#12');1");
   const t = js("[...document.querySelectorAll('#salesList .sale-item')].map(e=>e.innerText.split('\\n')[0].slice(0,4))");
   check('R03 A1 ticket search #12', t.length === 1 && t[0].startsWith('#12'), JSON.stringify(t));

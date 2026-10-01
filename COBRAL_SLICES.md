@@ -415,3 +415,14 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
   Fix: an id stays dirty until the listener first sees our pending write for it (or its commit settles), unless a newer
   push re-dirtied it (per-id sequence tokens). New `tools/race.sh <email> <pass>`: 5 armed-peer races with the remote
   sale fired 0–1.6 s before "Guardar" → 5/5 converge (new price, stock base−1 on phone and cloud).
+
+## v6.1 release checks (2026-10-01, Opus)
+- Merged `desktop` into main (27d5655). Post-merge fixes: desk sidebar sync indicator now shows the real status
+  (Sincronizado / Pendiente / Sin conexión / Error, refreshed on every status change); Deudas tabs mark the active one
+  (dark mode was indistinguishable). Version 6.1 (title, versionCode 61, sw cache `cobral-web-v6.1`).
+- APK on the emulator: `tools/regress.mjs` 18/18 (R02 now re-types the query if adb typing garbles it and requires
+  results), `tools/regress-sync.mjs` 5/5, `tools/race.sh` 5/5.
+- Web, desktop layout: new `tools/web-e2e.mjs` (headless Edge 1440 px, real sign-up on the Auth emulator, product +
+  two-pane sale, second device sees it and sells, table updates live, offline → status) 7/7. Headless screenshots at
+  1100/1280/1440/1920 light+dark reviewed; 375/900 px pixel-identical to pre-merge mobile web.
+- APK copied to `../Cobral_v6.1.apk`. Web deploy (`firebase deploy --only hosting:web`) still waits for Jimbo's OK.
