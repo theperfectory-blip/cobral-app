@@ -341,16 +341,25 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - Two panes: left list of debtors with total owed (tabs Pendientes / Historial), right the selected debtor's detail
   (existing debtor detail/history content inline, with Pagar / Editar / Eliminar actions). Empty state when nothing selected.
 
-### [ ] D6 · Nueva venta (two panes)
+### [x] D6 · Nueva venta (two panes)
 - In desk mode the sale opens in the main area (not a sheet): left search (autofocus) + category chips + product **grid**
   (4–6 columns, A5 halves still work with the mouse: left half −, right half +); right fixed cart panel (lines with qty
   input, price input, line total, remove), totals, payment method buttons with fees, location, "Confirmar venta",
   "Cancelar venta". Debt sales work the same way. Navigating to another page keeps the sale (sidebar "Venta en curso").
 
-### [ ] D7 · Shortcuts + export view
+### [x] D7 · Shortcuts + export view
 - Shortcuts (desk only, ignored while typing in an input except Esc): N = nueva venta, / = focus search of the current
   page, Esc = close drawer (sale: go back / keep sale), ? = shortcuts help popover. Enter in the sale confirms when the
   cart has items and a payment method is selected.
 - "Exportar vista" on Inicio (top table), Ventas (filtered table) and Inventario (sorted/filtered table): CSV with the
   visible columns and current sort, `;` separator, UTF-8 BOM, filename with page + period (e.g. `ventas-2026-09.csv`),
   via the existing downloadCSV.
+
+- D6/D7 note (Opus, 2026-10-01): implemented by Sonnet (Haiku kept breaking desk CSS); Opus fixes: tile grid rows
+  overflowing at 1280 (`grid-auto-rows:max-content`), dark tile borders and "Venta en curso", D5 debtor search losing
+  focus per keystroke, inventory CSV decimals with comma. Review fixes in earlier slices: D3 had removed the mobile
+  sales sort (mobile list was oldest-first); sortable `<th>` had a duplicate `style` attribute (headers lost padding);
+  Ventas/Inicio/Inventario filter rows overflowed below ~1300 px (now wrap, `#content{min-width:0}`); the D2 chart was
+  rewritten as HTML/CSS (SVG with preserveAspectRatio=none distorted/clipped labels, x labels in viewBox units, week
+  bucketed by UTC date) with nice y steps and click-to-drill (week/month → day, year → month). Verified headless at
+  1100/1280/1440/1920 light+dark; 375 and 900 px renders are pixel-identical to main.
