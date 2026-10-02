@@ -446,3 +446,8 @@ showed placeholders and photos were lost with the device.
   Cloudinary dashboard (see README).
 - Tests: `tools/photos-web-e2e.mjs` 13/13 (two browsers), `tools/regress-photos.mjs` 4/4 (emulator), unit tests 40/40
   with an `imageUrl` case. Test hook: `localStorage.cobralCloudinaryBase` is honoured only on hostname `localhost`.
+- E1 released 2026-10-02 after Jimbo's OK: real smoke test against Cloudinary (cloud `dnjijd8mx`, preset `cobral_fotos`
+  already existed and is unsigned): one 40x40 JPEG uploaded with the app's own `cloudinaryUpload()` and downloaded
+  back byte-identical (the test image stays in his account; unsigned presets can't delete). The URL carries no folder
+  segment (dynamic-folder account) — check "cobral" in the Cloudinary Media Library if it matters. Release v6.2
+  (assets `Cobral_v6.2.apk` + `Cobral.apk`, SHA-256 9c4ba6d7…856d) and web v6.2 deployed; /descargar/ shows the same SHA.
