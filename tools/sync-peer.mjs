@@ -7,6 +7,8 @@
 //   node tools/sync-peer.mjs add-sale <email> <pass> <productName>     (sells 1 unit of that product)
 //   node tools/sync-peer.mjs delete-sale <email> <pass> <numVenta>
 //   node tools/sync-peer.mjs watch   <email> <pass> <seconds>          (prints remote changes)
+//   node tools/sync-peer.mjs photos  <email> <pass>                    (how many products carry an imageUrl)
+//   node tools/sync-peer.mjs set-photo <email> <pass> <productName> <url>   (imageUrl = url; '' = photo deleted)
 import { createClient } from '../cloud-src/cobral-cloud.js';
 
 const [cmd, email, pass, arg] = process.argv.slice(2);
@@ -63,6 +65,17 @@ if (cmd === 'signup' || cmd === 'dump') {
   client.push({ ...snap, sales: snap.sales.filter(s => s.numVenta !== n) });
   await sleep(2500);
   console.log(`deleted sale #${n}; status=${client.status()}`);
+} else if (cmd === 'photos') {
+  const withUrl = snap.products.filter(p => p.imageUrl);
+  console.log(`photos: ${withUrl.length} of ${snap.products.length} products have an imageUrl; deleted-on-purpose: ${snap.products.filter(p => p.imageUrl === '').length}${withUrl[0] ? ' | e.g. ' + withUrl[0].name + ' ' + withUrl[0].imageUrl : ''}`);
+} else if (cmd === 'set-photo') {
+  const url = process.argv[6] ?? '';
+  const p = snap.products.find(x => x.name === arg);
+  if (!p) { console.log('product not found'); await client.signOut(); process.exit(2); }
+  p.imageUrl = url;
+  client.push({ ...snap });
+  await sleep(2500);
+  console.log(`set imageUrl of ${p.name} = "${url}"; status=${client.status()}`);
 } else if (cmd === 'watch') {
   await sleep(Number(arg || 10) * 1000);
   for (const c of remote) console.log(`${c.collection}: +${c.upserts.length} -${c.deletes.length} ${c.upserts.slice(0, 3).map(u => u.numVenta ? '#' + u.numVenta : (u.name || u.id)).join(',')}`);

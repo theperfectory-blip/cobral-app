@@ -429,3 +429,20 @@ Opus tests in the browser pane at 1280 / 1440 / 1920 px AND at 375 px (mobile mu
 - Deployed 2026-10-01 after Jimbo's OK: `firebase deploy --only hosting:web` → https://cobral.web.app serves commit
   44a76bf (index.html byte-identical, title "Cobral v6.1", sw cache cobral-web-v6.1); live load at 1440 and 390 px shows
   the login gate with no JS errors and no emulator flag.
+
+## E1 · Product photos in Cloudinary (2026-10-02)
+Requested by Jimbo: photos/heavy files do NOT go to Firebase; they go to Cloudinary like in tsc-web (account `dnjijd8mx`,
+unsigned preset). Before: photos lived only on the device (IndexedDB), product docs synced with `image:null`, the web
+showed placeholders and photos were lost with the device.
+- Product field `imageUrl` (absent = not uploaded yet, `''` = deleted on purpose, URL = in the cloud); added to
+  `OPTIONAL_PRODUCT_KEYS` in `cloud-src/sync-core.js` so removal propagates.
+- `reconcilePhotos()` (index.html): uploads local photos without a URL (also the pre-account photos of a v5.5 user),
+  downloads photos whose URL this device doesn't have, drops photos deleted elsewhere; serialized, retried on
+  `synced` status / `online` event / opening the account modal / saving a product. `localStorage.cobralPhotoUrls`
+  remembers which URL each local copy corresponds to. A service/preset error (400/401/403/404 mentioning preset…)
+  switches uploads off for the session instead of retrying; account modal shows "Fotos respaldadas: N de M".
+- Not yet: the user's profile photo is still device-only; Cloudinary originals are never deleted (unsigned presets
+  can't delete) so replacing/deleting leaves orphans; the preset `cobral_fotos` must be created by Jimbo in the
+  Cloudinary dashboard (see README).
+- Tests: `tools/photos-web-e2e.mjs` 13/13 (two browsers), `tools/regress-photos.mjs` 4/4 (emulator), unit tests 40/40
+  with an `imageUrl` case. Test hook: `localStorage.cobralCloudinaryBase` is honoured only on hostname `localhost`.

@@ -7,3 +7,7 @@ window.COBRAL_FIREBASE_CONFIG = {
   messagingSenderId: '60325446787',
   appId: '1:60325446787:web:292ff3035908f69c2f07b6',
 };
+
+// Cloudinary (fotos de productos). Misma cuenta que tsc-web; preset "cobral_fotos" en modo Unsigned (sin firmar).
+// cloudName y uploadPreset son publicos por diseno: el secreto de la cuenta nunca va en la app.
+window.COBRAL_CLOUDINARY = { cloudName: 'dnjijd8mx', uploadPreset: 'cobral_fotos' };

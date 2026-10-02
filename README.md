@@ -7,7 +7,7 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
 |---|---|
 | **Web** | https://cobral.web.app |
 | **Descargar la APK** | https://cobral.web.app/descargar/ (el archivo sale de las [Releases](https://github.com/theperfectory-blip/cobral-app/releases/latest) de este repo) |
-| **Versión actual** | 6.1 (`versionCode 61`) |
+| **Versión actual** | 6.2 (`versionCode 62`) |
 
 ## Qué hace
 
@@ -20,6 +20,8 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
 - **Inventario**: stock, costo, precio y margen; el precio se calcula en vivo desde el margen deseado (sobre la
   venta, redondeado a $100).
 - **Deudas**: deudores, abonos, historial.
+- **Fotos de productos** en Cloudinary: se guardan en el teléfono (funcionan sin internet) y, con cuenta, se respaldan
+  y se comparten con la web y otros dispositivos.
 - **Sincronización** (opcional): correo + contraseña (Firebase Auth) y Firestore. El stock se sincroniza como
   incrementos, así que dos dispositivos que venden el mismo producto a la vez no se pisan.
 - **Diseño de escritorio** (solo web, pantallas ≥ 1100 px): barra lateral, tablas ordenables, gráfico clicable,
@@ -33,6 +35,13 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
   `www/cloud/cobral-cloud.js` (expone `window.CobralCloud`, se carga bajo demanda). Guarda una "sombra" de lo ya
   subido para enviar solo diferencias, mezcla el stock en tres vías y marca lo pendiente para que una edición local
   no se pierda frente a un cambio remoto.
+- **Fotos** (`www/index.html`, bloque "FOTOS EN LA NUBE"): cada foto vive en IndexedDB del dispositivo y, con cuenta y
+  conexión, se sube a **Cloudinary** (mismo modelo que `tsc-web`: preset *unsigned*, sin secretos en la app). El producto
+  guarda el enlace en `imageUrl` y viaja con la sincronización normal; Firestore nunca guarda la imagen y no se usa
+  Firebase Storage. `imageUrl` ausente = aún sin subir, `''` = foto eliminada a propósito (se propaga a los otros
+  dispositivos), `https://…` = foto en la nube. Un proceso en segundo plano (`reconcilePhotos`) sube lo pendiente
+  (incluye las fotos que ya tenía el teléfono antes de crear la cuenta) y baja lo que subieron otros dispositivos.
+  Configuración pública en [`www/cloud/config.js`](www/cloud/config.js) (`cloudName` y `uploadPreset`).
 - **Firebase** (proyecto `cobral-app`): Auth con correo y contraseña, Firestore `(default)` en
   `southamerica-west1` con protección contra borrado, reglas por usuario (`users/{uid}/**`,
   [`firebase/firestore.rules`](firebase/firestore.rules)) y Hosting (sitio `cobral`, target `web`).
@@ -48,6 +57,14 @@ firebase/       reglas e índices de Firestore
 tools/          verificación, build, emuladores y pruebas de regresión
 COBRAL_SLICES.md  historial y especificación de cada cambio (fuente de verdad)
 ```
+
+## Cloudinary (fotos)
+
+Cuenta de Cloudinary compartida con `tsc-web` (`cloudName` `dnjijd8mx`). Cobral usa su **propio preset de subida**
+`cobral_fotos`, que hay que crear una vez en el panel de Cloudinary: *Settings → Upload → Upload presets → Add upload
+preset* con **Signing mode: Unsigned**, **Folder: `cobral`** y, recomendado, formatos permitidos `jpg, png, webp` y
+tamaño máximo pequeño. Si el preset no existe, la app sigue funcionando: las fotos quedan en el teléfono y en
+*Configuración → Cuenta* aparece "Respaldo de fotos no disponible por ahora".
 
 ## Desarrollo
 
@@ -77,6 +94,9 @@ cuentas desechables `@cobral.test`. No las corras contra el teléfono real ni co
 | `bash tools/race.sh <correo> <clave>` | 5 carreras: edición de precio en el teléfono mientras otro dispositivo vende lo mismo |
 | `npm run e2e:cloud` | 26 pasos del módulo de nube contra los emuladores |
 | `node tools/web-e2e.mjs` | la web de escritorio de punta a punta (Edge sin interfaz) |
+| `node tools/fake-cloudinary.mjs` | Cloudinary falso local para las pruebas de fotos (dejar corriendo) |
+| `node tools/photos-web-e2e.mjs` | fotos entre dos navegadores: subir, bajar, reemplazar, borrar, servicio caído y sin conexión (requiere servidor estático de `www/` en `localhost:5173`) |
+| `node tools/regress-photos.mjs` | fotos en el emulador de Android, incluida la subida de las fotos que ya tenía el teléfono |
 | `node tools/deskshot.mjs <url> <prefijo>` | capturas de la web a varios anchos, claro y oscuro |
 
 ## Publicar
