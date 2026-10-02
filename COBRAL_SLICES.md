@@ -455,3 +455,16 @@ showed placeholders and photos were lost with the device.
   it. Added "Descargar app para Android" (web only, never in the APK): login gate, desktop sidebar ("App para Android")
   and the Configuración modal row (mobile web). `tools/build-site.mjs` now empties dist-web instead of deleting it.
   Web-only change, no new APK (the added markup is guarded by !isNative / desk mode / the web login gate).
+
+## Upgrade safety check (2026-10-02, Jimbo: "no quiero perder ningún dato ni las fotos al actualizar desde la 5.5")
+- Signing: `Cobral_v5.6`, `v6.0`, `v6.1`, `v6.2` are all signed with this PC's `~/.android/debug.keystore`
+  (cert SHA-256 `7701f436927ebfa652712b070f3a724757a6a642a716d32eb4d96d03ad4be619`, created 2026-02-27). The v5.52 baseline
+  was built the same way (Android Studio on this PC, `COBRAL_PROJECT_CONTEXT.md`), so the installed 5.5 very likely shares
+  it — NOT verified against the phone (no 5.5 APK on disk; the phone is never touched). versionCode of the baseline was 1,
+  new is 62 (only needs to be higher). Storage is identical in 5.6 and 6.2 (`ventasApp` in localStorage + IndexedDB `cobralPhotos`).
+- `tools/upgrade-test.mjs` (old APK from `tools/build-old.sh` = v5.52 web code, debuggable) → 13/13: 296 sales, 92 products,
+  2 debts, settings and 6 photos identical (hashes / byte for byte) after `adb install -r` of v6.2; an APK signed with a
+  different key is refused (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) and leaves the data untouched. The real `Cobral_v5.6.apk`
+  → 6.2 over-install succeeds (versionCode 56→62, firstInstallTime kept).
+- Rule for the phone: install the new APK OVER the old app, never uninstall first. If Android refuses, nothing changed.
+
