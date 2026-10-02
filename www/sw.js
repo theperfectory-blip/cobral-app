@@ -31,6 +31,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return; // never intercept writes
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // never touch cross-origin (Firestore/Auth/gstatic)
+  if (url.pathname.startsWith('/descargar/')) return; // download page + APK: straight to the network, never cached
 
   if (isNetworkFirst(req, url)) {
     e.respondWith(

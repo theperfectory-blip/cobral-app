@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Descargar Cobral</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1e3a5f">
+<meta name="description" content="Descarga la app Cobral para Android.">
+<link rel="icon" href="icon.png">
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--text:#1f2937;--muted:#5f6570;--line:#e5e7eb;--primary:#1e3a5f;--on-primary:#fff;--soft:#dce8f2;--gold:#d4af37}
+@media (prefers-color-scheme:dark){:root{--bg:#0f2236;--card:#152a45;--text:#dce8f2;--muted:#a0bdd8;--line:#234a6e;--primary:#d4af37;--on-primary:#152a45;--soft:#1a3352}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+main{width:100%;max-width:520px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px 24px;box-shadow:0 10px 15px -3px rgba(0,0,0,.08)}
+.head{text-align:center}
+.head img{width:88px;height:88px;border-radius:20px;display:block;margin:0 auto 14px}
+h1{margin:0;font-size:26px}
+.sub{margin:4px 0 0;color:var(--muted);font-size:14px}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:24px 0 8px;padding:16px;border-radius:12px;background:var(--primary);color:var(--on-primary);font-weight:700;font-size:17px;text-decoration:none}
+.btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn svg{width:22px;height:22px;flex-shrink:0}
+.meta{text-align:center;color:var(--muted);font-size:13px;margin:0 0 24px}
+h2{font-size:15px;margin:24px 0 8px}
+ol{margin:0;padding-left:22px;color:var(--text)}
+li{margin:6px 0}
+.note{background:var(--soft);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);margin-top:20px}
+code{font:12px/1.4 ui-monospace,Consolas,monospace;word-break:break-all;color:var(--muted)}
+a.link{color:var(--text)}
+.foot{text-align:center;margin:24px 0 0;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <div class="head">
+    <img src="icon.png" alt="Cobral" width="88" height="88">
+    <h1>Cobral</h1>
+    <p class="sub">App para Android · versión __VERSION__</p>
+  </div>
+
+  <a class="btn" href="__APK_FILE__" download="Cobral_v__VERSION__.apk">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16"/></svg>
+    Descargar APK
+  </a>
+  <p class="meta">__SIZE__ MB · actualizada el __DATE__</p>
+
+  <h2>Cómo instalarla</h2>
+  <ol>
+    <li>Descarga el archivo desde este mismo celular.</li>
+    <li>Ábrelo. Si Android lo pide, permite <strong>instalar apps desde esta fuente</strong> (navegador o Archivos).</li>
+    <li>Si ya tienes Cobral instalada, se actualiza encima y <strong>conserva tus datos</strong>.</li>
+    <li>Para sincronizar con la web: <em>Configuración → Cuenta</em> e inicia sesión con tu correo.</li>
+  </ol>
+
+  <div class="note">
+    La app funciona sin cuenta en este teléfono. Con cuenta, tus ventas, inventario y deudas se sincronizan con
+    <a class="link" href="/">la versión web</a>.
+  </div>
+
+  <h2>Verificar el archivo</h2>
+  <p style="margin:0;font-size:13px;color:var(--muted)">SHA-256:</p>
+  <code>__SHA__</code>
+
+  <p class="foot">Es una APK de uso propio, fuera de Google Play.</p>
+</main>
+</body>
+</html>
