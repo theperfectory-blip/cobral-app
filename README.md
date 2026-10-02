@@ -97,6 +97,7 @@ cuentas desechables `@cobral.test`. No las corras contra el teléfono real ni co
 | `node tools/fake-cloudinary.mjs` | Cloudinary falso local para las pruebas de fotos (dejar corriendo) |
 | `node tools/photos-web-e2e.mjs` | fotos entre dos navegadores: subir, bajar, reemplazar, borrar, servicio caído y sin conexión (requiere servidor estático de `www/` en `localhost:5173`) |
 | `node tools/regress-photos.mjs` | fotos en el emulador de Android, incluida la subida de las fotos que ya tenía el teléfono |
+| `node tools/restore-backup.mjs <respaldo.json> --yes` | restaura un respaldo (formato `cobral-respaldo-1`: localStorage + fotos de IndexedDB) en la app depurable conectada; solo escribe en emuladores salvo `--allow-device` |
 | `bash tools/build-old.sh <out.apk>` + `node tools/upgrade-test.mjs <vieja.apk> ../Cobral_v<nueva>.apk` | prueba de actualización: instala una versión antigua con datos y fotos, instala la nueva encima y verifica que no se perdió nada; también comprueba que Android rechaza una APK con otra firma sin tocar los datos |
 | `node tools/deskshot.mjs <url> <prefijo>` | capturas de la web a varios anchos, claro y oscuro |
 
