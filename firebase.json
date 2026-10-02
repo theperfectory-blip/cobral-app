@@ -56,23 +56,6 @@
             "value": "no-cache, no-store"
           }
         ]
-      },
-      {
-        "source": "**/*.apk",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/vnd.android.package-archive"
-          },
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          },
-          {
-            "key": "X-Content-Type-Options",
-            "value": "nosniff"
-          }
-        ]
       }
     ]
   }

@@ -6,7 +6,7 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
 | | |
 |---|---|
 | **Web** | https://cobral.web.app |
-| **Descargar la APK** | https://cobral.web.app/descargar/ |
+| **Descargar la APK** | https://cobral.web.app/descargar/ (el archivo sale de las [Releases](https://github.com/theperfectory-blip/cobral-app/releases/latest) de este repo) |
 | **Versión actual** | 6.1 (`versionCode 61`) |
 
 ## Qué hace
@@ -81,19 +81,30 @@ cuentas desechables `@cobral.test`. No las corras contra el teléfono real ni co
 
 ## Publicar
 
+Mismo modelo que `tsc-web`: **Firebase solo aloja la web; la APK vive en este repo** (GitHub Release).
+
+**APK** (cada versión):
+1. Subir la versión en `android/app/build.gradle` (`versionCode`/`versionName`), el `<title>` de `www/index.html`
+   y el nombre de caché de `www/sw.js`.
+2. Compilar con `bash tools/build.sh` y copiar `android/app/build/outputs/apk/debug/app-debug.apk` como
+   `../Cobral_v<versión>.apk`.
+3. Crear la Release con **dos copias** del archivo: la versionada y la de nombre fijo `Cobral.apk`, que es la que
+   enlaza la web (`.../releases/latest/download/Cobral.apk`, apunta siempre a la última):
+
+```bash
+cp ../Cobral_v6.1.apk /tmp/Cobral.apk
+gh release create v6.1 ../Cobral_v6.1.apk /tmp/Cobral.apk --title "Cobral v6.1" --notes "..."
+```
+
 **Web y página de descarga** (Firebase Hosting sirve `dist-web/`, no `www/` directamente):
 
 ```bash
-node tools/build-site.mjs        # arma dist-web/ = www/ + descargar/ con la APK (../Cobral_v<versión>.apk)
+node tools/build-site.mjs        # arma dist-web/ = www/ + descargar/ (con tamaño, fecha y SHA-256 de la APK)
 firebase deploy --only hosting:web
 ```
 
-La APK no vive dentro de `www/` porque Capacitor copia esa carpeta al interior de la propia APK. La página
-`/descargar/` muestra versión, tamaño, fecha y SHA-256 del archivo.
-
-**APK**: subir la versión en `android/app/build.gradle` (`versionCode`/`versionName`), `<title>` de
-`www/index.html` y el nombre de caché de `www/sw.js`; compilar con `tools/build.sh` y copiar
-`android/app/build/outputs/apk/debug/app-debug.apk` como `Cobral_v<versión>.apk`.
+La APK no va dentro del sitio (el plan gratuito de Hosting rechaza `.apk`) ni dentro de `www/` (Capacitor copia esa
+carpeta al interior de la APK). La página `/descargar/` solo enlaza a la Release.
 
 ## Convenciones
 
