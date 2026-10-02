@@ -451,3 +451,7 @@ showed placeholders and photos were lost with the device.
   back byte-identical (the test image stays in his account; unsigned presets can't delete). The URL carries no folder
   segment (dynamic-folder account) — check "cobral" in the Cloudinary Media Library if it matters. Release v6.2
   (assets `Cobral_v6.2.apk` + `Cobral.apk`, SHA-256 9c4ba6d7…856d) and web v6.2 deployed; /descargar/ shows the same SHA.
+- Web fix 2026-10-02 (Jimbo: "no veo el botón para descargar la APK"): /descargar/ existed but nothing in the web linked to
+  it. Added "Descargar app para Android" (web only, never in the APK): login gate, desktop sidebar ("App para Android")
+  and the Configuración modal row (mobile web). `tools/build-site.mjs` now empties dist-web instead of deleting it.
+  Web-only change, no new APK (the added markup is guarded by !isNative / desk mode / the web login gate).

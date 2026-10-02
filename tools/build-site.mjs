@@ -4,7 +4,7 @@
 // The APK file is only read here for its size / date / SHA-256 shown on the page (Firebase Hosting's free plan
 // also rejects .apk files, and www/ must never contain it because Capacitor copies www/ into the APK).
 // Usage: node tools/build-site.mjs [path/to/Cobral.apk]   (default: ../Cobral_v<versionName>.apk)
-import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -15,7 +15,9 @@ const apk = path.resolve(process.argv[2] || path.join(root, '..', `Cobral_v${ver
 if (!existsSync(apk)) { console.error(`APK not found: ${apk}`); process.exit(1); }
 
 const out = path.join(root, 'dist-web');
-rmSync(out, { recursive: true, force: true });
+// empty the folder instead of deleting it: a dev server running inside dist-web would make rmSync(out) fail with EPERM
+mkdirSync(out, { recursive: true });
+for (const f of readdirSync(out)) rmSync(path.join(out, f), { recursive: true, force: true });
 cpSync(path.join(root, 'www'), out, { recursive: true });
 const dl = path.join(out, 'descargar');
 mkdirSync(dl, { recursive: true });
