@@ -23,7 +23,9 @@ const dl = path.join(out, 'descargar');
 mkdirSync(dl, { recursive: true });
 cpSync(path.join(root, 'site/descargar/icon.png'), path.join(dl, 'icon.png'));
 
-const APK_URL = 'https://github.com/theperfectory-blip/cobral-app/releases/latest/download/Cobral.apk';
+// Versioned file name on purpose: a fixed name (Cobral.apk) collides with the copy from a previous download and Android's downloader
+// then hangs at 100 % (complete .pending- file never published). Each release has Cobral_v<version>.apk.
+const APK_URL = `https://github.com/theperfectory-blip/cobral-app/releases/download/v${version}/Cobral_v${version}.apk`;
 const buf = readFileSync(apk);
 const sha = createHash('sha256').update(buf).digest('hex');
 const mb = (statSync(apk).size / 1048576).toFixed(1).replace('.', ',');
