@@ -510,3 +510,13 @@ Hidden places are excluded from `locPlaces()` (selectors) and from the Home/Vent
 and "+ Sumar embalajes al stock"; the inventory list/table shows "+ Embalaje (N)" / "+" that opens "Ingresar stock" (packs + loose units, live
 preview "Stock 36 → 65") and adds the total to the stock (synced as a stock delta like any sale).
 Verified on the emulator (real editor/modal, persistence) and desktop screenshots.
+
+## E6 · Places model fix (v6.7, 2026-10-03)
+Jimbo's phone (read-only inspection + backup 2026-10-03): "María Celeste" was in `hiddenLocations`, his sales stored it as "Maria Celeste" (239 sales,
+no accent), no day had it, and the product editor listed only places assigned to a weekday. Fixes: places are compared without accents/case
+(`locNorm`); `allPlaces()` (week + current + sales − hidden − day off, spelling = week/current, else most used in sales) feeds selectors, filters AND the
+"Precios por ubicación" list (`getDistinctLocationNames` = week order first, then the rest) so occasional places can have prices; typing an
+existing place with another spelling reuses the existing one (`canonLoc`); location prices are looked up accent-tolerantly (`lpGet`); "Gestionar lugares"
+has a "Quitados" list with "Restaurar". Dark-mode fixes for the struck-through day. Tested with the phone's real data in the emulator
+(restore, retype with accent, price saved/applied with either spelling). The save flow itself worked on the emulator with touch input, so the
+original failure was the removed-place state + price list limited to weekdays.
