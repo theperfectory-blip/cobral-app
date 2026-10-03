@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Cobral v6.3</title>
+    <title>Cobral v6.4</title>
     <meta name="theme-color" content="#1e3a5f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -223,6 +223,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .input-label svg{width:16px;height:16px;flex-shrink:0}
 .margin-real-line{font-size:12px;color:var(--gray-500);margin-top:6px}
 .margin-hint-error{font-size:12px;color:var(--danger);margin-top:6px}
+.loc-acc-head{display:flex;align-items:center;gap:8px;padding:12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);cursor:pointer}
+.loc-acc-sum{flex:1;text-align:right;font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loc-acc-chev{display:flex;transition:transform .2s}
+.loc-acc-chev svg{width:18px;height:18px}
+body.dark-mode .loc-acc-head{background:#152a45;border-color:#234a6e}
 .mini-bar{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:398px;background:var(--gold);color:var(--primary);border-radius:var(--radius);padding:16px 16px 12px;display:flex;align-items:center;gap:12px;box-shadow:0 -2px 20px rgba(0,0,0,0.25);z-index:1500;cursor:grab;animation:miniBarIn 0.3s ease;touch-action:none;user-select:none}
 .mini-bar-grabber{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:32px;height:4px;border-radius:2px;background:rgba(30,58,95,0.3)}
 .mini-bar-icon{width:40px;height:40px;background:rgba(30,58,95,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -980,7 +985,9 @@ function paymentLabel(m){return({efectivo:'Efectivo',debito:'Débito',credito:'C
 function getProductPrice(p,loc=state.currentLocation){const sp=p.locationPrices&&p.locationPrices[loc];return sp>0?sp:p.salePrice}
 function newProductId(){let id=Math.max(Date.now(),(state._lastNewProductId||0)+1);while(state.products.some(p=>p.id===id))id++;state._lastNewProductId=id;return id}
 function getCartLocation(){return state.editingSaleId!=null?state.editingSaleLocation:(state.editingDebtId!=null?state.editingDebtLocation:state.currentLocation)}
-function getDistinctLocationNames(){const seen=[];[1,2,3,4,5,6,0].forEach(i=>{const n=state.locations[i];if(n&&!seen.includes(n))seen.push(n)});return seen}
+// 'Libre' (día libre) no es un lugar de venta: no aparece en los precios por ubicación.
+const isDayOffName=n=>/^\s*(d[ií]a\s+)?libre\s*$/i.test(n||'');
+function getDistinctLocationNames(){const seen=[];[1,2,3,4,5,6,0].forEach(i=>{const n=state.locations[i];if(n&&!isDayOffName(n)&&!seen.includes(n))seen.push(n)});return seen}
 function productPriceTag(p,loc){const price=getProductPrice(p,loc);const special=price!==p.salePrice;return formatMoney(price,p.unit)+(special?`<span class="loc-price-tag">${loc}</span>`:'')}
 function migrateCartPricesForLocationChange(oldLoc,newLoc){if(oldLoc===newLoc||state.editingSaleId!=null||state.editingDebtId!=null||!state.cart.length)return;let changed=false;state.cart.forEach(i=>{const p=state.products.find(x=>x.id===i.productId);if(p&&i.price===getProductPrice(p,oldLoc)){i.price=getProductPrice(p,newLoc);changed=true}});if(!changed)return;if(document.getElementById('saleCartSection'))renderSaleCart();if(document.getElementById('saleProductList'))renderSaleProducts();if(state.saleMinimized)renderMiniBar()}
 function gStep(id){const p=state.products.find(x=>x.id===id);return p&&p.unit==='g'?(p.gramStep||250):1}
@@ -1603,15 +1610,15 @@ state.products.forEach(p=>state.originalStock[p.id]=p.stock);
 state.cart=[];state.selectedPayment=null;state.isDebtSale=isDebt;state.debtorName=debtorName;state.saleSearch='';state.cartExpanded=false;state.lastAddedId=null;
 renderSaleModal()}
 
-function renderSaleModal(){
+function renderSaleModal(noAnim){
 if(isDesk()){renderDeskSaleModal();return}
-document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay sale-opening"><div class="modal" id="dragSheet" style="height:90vh;display:flex;flex-direction:column"><div id="saleModalSwipeArea" class="modal-grabber-strip"><div class="modal-grabber-pill"></div></div><div class="modal-header drag-handle" id="saleModalHeader" style="border-radius:0"><h2 class="modal-title">${state.isDebtSale?SVG.card+' Deuda: '+state.debtorName:SVG.cart+' Nueva venta'}</h2><button class="modal-close" onclick="cancelSale()">×</button></div>
+document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay${noAnim?'':' sale-opening'}"><div class="modal" id="dragSheet" style="height:90vh;display:flex;flex-direction:column"><div id="saleModalSwipeArea" class="modal-grabber-strip"><div class="modal-grabber-pill"></div></div><div class="modal-header drag-handle" id="saleModalHeader" style="border-radius:0"><h2 class="modal-title">${state.isDebtSale?SVG.card+' Deuda: '+state.debtorName:SVG.cart+' Nueva venta'}</h2><button class="modal-close" onclick="cancelSale()">×</button></div>
 <div style="padding:12px 16px"><input class="input" id="saleSearchInput" placeholder="Buscar producto..." oninput="handleSaleSearch(this.value)" value="${state.saleSearch||''}"></div>
 <div class="category-pills" id="saleCatPills">${state.categories.map(c=>`<button class="category-pill ${state.selectedCategory===c?'active':''}" onclick="selectSaleCategory('${c}')">${c}</button>`).join('')}</div>
 <div id="saleProductList" style="flex:1;overflow-y:auto;padding:0 16px"></div>
 <div id="saleCartSection"></div>
 <div class="modal-footer"><button class="btn btn-outline" onclick="cancelSale()">Cancelar</button><button class="btn btn-primary" id="saleContinueBtn" onclick="${state.isDebtSale?'completeDebtSale()':'openPaymentModal()'}" ${state.cart.length?'':'disabled'}>${state.isDebtSale?'Registrar deuda':'Continuar'}</button></div></div></div>`;
-renderSaleProducts();renderSaleCart();setupScrollSound('saleProductList');addDragGesture('saleModalSwipeArea','dragSheet','down',80,minimizeSale);addDragGesture('saleModalHeader','dragSheet','down',80,minimizeSale)}
+renderSaleProducts();renderSaleCart();setupScrollSound('saleProductList');attachSheetMinimizeGesture('saleModalSwipeArea');attachSheetMinimizeGesture('saleModalHeader')}
 
 function handleSaleSearch(v){state.saleSearch=v;renderSaleProducts()}
 
@@ -1805,27 +1812,83 @@ if(minusEl)minusEl.classList.toggle('tap-inactive',!cartItem);
 }
 if(isDesk())refreshDeskCartFoot()}
 
-function minimizeSale(fromY){
+// ==================== MORPH CARRITO <-> BOTÓN ====================
+// La hoja de la venta se transforma en la barra dorada y al revés, siguiendo el dedo: p=0 → barra, p=1 → hoja completa.
+// Se anima posición/tamaño/color de la hoja real (no solo se desplaza), y el contenido se desvanece mientras se encoge.
+const morphClamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+const morphLerp=(a,b,t)=>a+(b-a)*t;
+const morphMs=(a,b)=>Math.round(150+260*Math.abs(a-b));
+function morphRgb(c){const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c||'');return m&&(m[4]===undefined||+m[4]>0)?[+m[1],+m[2],+m[3]]:null}
+function morphMiniBar(){renderMiniBar();const el=document.querySelector('#miniBarContainer .mini-bar');if(el)el.style.animation='none';return el}
+function morphSetup(sheet,mini){
+const r=sheet.getBoundingClientRect(),m=mini.getBoundingClientRect();
+return{sheet,overlay:sheet.closest('.modal-overlay'),kids:Array.from(sheet.children),h0:sheet.style.height,p:-1,
+full:{left:r.left,top:r.top,width:r.width,height:r.height},mini:{left:m.left,top:m.top,width:m.width,height:m.height},
+fullBg:morphRgb(getComputedStyle(sheet).backgroundColor)||[255,255,255],
+miniBg:morphRgb(getComputedStyle(mini).backgroundColor)||(state.isDebtSale?[198,40,40]:[212,175,55])}}
+function morphApply(M,p){
+p=morphClamp(p);M.p=p;const st=M.sheet.style,f=M.full,m=M.mini;
+st.position='fixed';st.margin='0';st.maxWidth='none';st.maxHeight='none';st.overflow='hidden';st.transform='none';st.animation='none';st.transition='none';
+st.left=morphLerp(m.left,f.left,p)+'px';st.top=morphLerp(m.top,f.top,p)+'px';st.width=morphLerp(m.width,f.width,p)+'px';st.height=morphLerp(m.height,f.height,p)+'px';
+const r=morphLerp(12,16,p),rb=morphLerp(12,0,p);st.borderRadius=r+'px '+r+'px '+rb+'px '+rb+'px';
+const k=morphClamp((p-0.15)/0.6);st.background='rgb('+M.miniBg.map((v,i)=>Math.round(morphLerp(v,M.fullBg[i],k))).join(',')+')';
+st.opacity=morphClamp(p/0.18);
+const ko=morphClamp((p-0.3)/0.5);M.kids.forEach(c=>{c.style.opacity=ko});
+if(M.overlay)M.overlay.style.background='rgba(0,0,0,'+(0.5*p).toFixed(3)+')'}
+function morphFinish(M){
+const st=M.sheet.style;['position','left','top','width','height','margin','max-width','max-height','overflow','transform','animation','transition','border-radius','background','opacity'].forEach(k=>st.removeProperty(k));
+if(M.h0)st.height=M.h0;M.kids.forEach(c=>c.style.removeProperty('opacity'));if(M.overlay)M.overlay.style.background=''}
+function morphTween(M,to,ms,done){
+const from=M.p<0?to:M.p,t0=performance.now();state.morphing=true;
+const step=now=>{const t=morphClamp((now-t0)/ms);morphApply(M,morphLerp(from,to,1-Math.pow(1-t,3)));if(t<1)requestAnimationFrame(step);else{state.morphing=false;if(done)done()}};
+requestAnimationFrame(step)}
+// Arrastrar la hoja hacia abajo: se va encogiendo hacia la barra; al soltar se minimiza o vuelve.
+function attachSheetMinimizeGesture(handleId){
+setTimeout(()=>{const h=document.getElementById(handleId);if(!h||h.dataset.morph)return;h.dataset.morph='1';
+let sy=0,sx=0,st=0,M=null,T=1,active=false,wasDrag=false;
+h.addEventListener('pointerdown',e=>{if(e.target.closest('button')||state.morphing)return;active=true;M=null;sy=e.clientY;sx=e.clientX;st=Date.now();wasDrag=false;try{h.setPointerCapture(e.pointerId)}catch(x){}});
+h.addEventListener('pointermove',e=>{if(!active)return;const dy=e.clientY-sy,dx=e.clientX-sx;
+if(!M){if(dy<8||Math.abs(dx)>Math.abs(dy))return;const sheet=document.getElementById('dragSheet'),mini=morphMiniBar();if(!sheet||!mini){active=false;return}M=morphSetup(sheet,mini);T=Math.min(Math.max(M.mini.top-M.full.top,80),300);wasDrag=true}
+morphApply(M,1-Math.max(0,dy)/T)});
+const end=e=>{if(!active)return;active=false;if(!M)return;const m=M;M=null;const dy=Math.max(0,e.clientY-sy),v=dy/Math.max(1,Date.now()-st),p=m.p;
+if(dy>80||(dy>25&&v>0.5)){state.saleMinimized=true;playSound('nav');morphTween(m,0,morphMs(p,0),()=>{document.getElementById('modalContainer').innerHTML=''})}
+else morphTween(m,1,morphMs(p,1),()=>{morphFinish(m);if(!state.saleMinimized)hideMiniBar()})};
+h.addEventListener('pointerup',end);h.addEventListener('pointercancel',end);
+if(window.matchMedia&&window.matchMedia('(pointer:fine)').matches)h.addEventListener('click',e=>{if(e.target.closest('button'))return;if(wasDrag){wasDrag=false;return}minimizeSale()})},50)}
+// Deslizar la barra hacia arriba: la barra crece y se convierte en la hoja completa siguiendo el dedo.
+function attachMiniBarGesture(){
+setTimeout(()=>{const h=document.getElementById('miniBarSwipe');if(!h||h.dataset.morph)return;h.dataset.morph='1';
+let sy=0,sx=0,st=0,M=null,T=1,active=false,wasDrag=false;
+h.addEventListener('pointerdown',e=>{if(e.target.closest('button')||state.morphing)return;active=true;M=null;sy=e.clientY;sx=e.clientX;st=Date.now();wasDrag=false;try{h.setPointerCapture(e.pointerId)}catch(x){}});
+h.addEventListener('pointermove',e=>{if(!active)return;const dy=sy-e.clientY,dx=e.clientX-sx;
+if(!M){if(dy<8||Math.abs(dx)>dy)return;renderSaleModal(true);const sheet=document.getElementById('dragSheet');if(!sheet){active=false;return}M=morphSetup(sheet,h);T=Math.min(Math.max(M.mini.top-M.full.top,80),300);wasDrag=true}
+morphApply(M,dy/T)});
+const end=e=>{if(!active)return;active=false;if(!M)return;const m=M;M=null;const dy=Math.max(0,sy-e.clientY),v=dy/Math.max(1,Date.now()-st),p=m.p;
+if(dy>60||(dy>25&&v>0.5))morphTween(m,1,morphMs(p,1),()=>{morphFinish(m);state.saleMinimized=false;hideMiniBar();playSound('open')});
+else morphTween(m,0,morphMs(p,0),()=>{document.getElementById('modalContainer').innerHTML=''})};
+h.addEventListener('pointerup',end);h.addEventListener('pointercancel',end);
+if(window.matchMedia&&window.matchMedia('(pointer:fine)').matches)h.addEventListener('click',e=>{if(e.target.closest('button'))return;if(wasDrag){wasDrag=false;return}expandSale()})},50)}
+
+function minimizeSale(){
 if(isDesk()){if(!document.getElementById('deskSale'))return;state.saleMinimized=true;document.getElementById('modalContainer').innerHTML='';renderDeskSidebar();playSound('nav');return}
-state.saleMinimized=true;
-const overlay=document.querySelector('.modal-overlay');
+if(state.morphing)return;
+state.saleMinimized=true;playSound('nav');
 const sheet=document.getElementById('dragSheet');
-if(overlay&&sheet){
-overlay.classList.remove('sale-opening');overlay.classList.add('sale-closing');
-sheet.style.animation='none';sheet.style.transition='none';sheet.style.transform=`translateY(${fromY||0}px)`;sheet.style.opacity='1';
-void sheet.offsetWidth;
-sheet.style.transition='transform 0.28s ease-in,opacity 0.28s ease-in';
-sheet.style.transform='translateY(60vh) scale(0.3)';sheet.style.opacity='0';
-overlay.style.background='';overlay.style.transition='background 0.28s ease-in';
-setTimeout(()=>{document.getElementById('modalContainer').innerHTML='';renderMiniBar()},280)}
-else{document.getElementById('modalContainer').innerHTML='';renderMiniBar()}
-playSound('nav')}
+if(!sheet){document.getElementById('modalContainer').innerHTML='';renderMiniBar();return}
+const mini=morphMiniBar();if(!mini){document.getElementById('modalContainer').innerHTML='';return}
+const M=morphSetup(sheet,mini);morphApply(M,1);
+morphTween(M,0,morphMs(1,0),()=>{document.getElementById('modalContainer').innerHTML=''})}
 
 function expandSale(){
-state.saleMinimized=false;
-hideMiniBar();
-renderSaleModal();
-playSound('open')}
+if(state.morphing)return;
+if(isDesk()){state.saleMinimized=false;hideMiniBar();renderSaleModal();playSound('open');return}
+const mini=document.querySelector('#miniBarContainer .mini-bar');
+if(!mini){state.saleMinimized=false;renderSaleModal();playSound('open');return}
+renderSaleModal(true);
+const sheet=document.getElementById('dragSheet');
+if(!sheet){state.saleMinimized=false;hideMiniBar();return}
+const M=morphSetup(sheet,mini);morphApply(M,0);playSound('open');
+morphTween(M,1,morphMs(0,1),()=>{morphFinish(M);state.saleMinimized=false;hideMiniBar()})}
 
 function renderMiniBar(){
 const total=state.cart.reduce((s,i)=>s+calculateItemPrice(i),0);
@@ -1838,7 +1901,7 @@ document.getElementById('miniBarContainer').innerHTML=`<div class="mini-bar ${st
 <div class="mini-bar-info"><div class="mini-bar-title">${label}</div><div class="mini-bar-subtitle">${count?count+' item'+(count>1?'s':'')+' · '+names:'Sin productos'}</div></div>
 ${count?'<div class="mini-bar-total">'+formatMoney(total)+'</div>':''}
 <button class="mini-bar-close" onclick="event.stopPropagation();cancelSale()">×</button>
-</div>`;addDragGesture('miniBarSwipe','miniBarSwipe','up',40,expandSale)}
+</div>`;attachMiniBarGesture()}
 
 function hideMiniBar(){document.getElementById('miniBarContainer').innerHTML=''}
 
@@ -1850,7 +1913,7 @@ hideMiniBar();closeModal();if(isDesk())renderDeskSidebar();flushPendingRemote()}
 
 function openPaymentModal(){playSound('nav');state.selectedPayment=null;renderPaymentModal()}
 function renderPaymentModal(){const total=getCartTotal();document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay"><div class="modal" id="dragSheet"><div id="paymentModalSwipeArea" class="modal-grabber-strip"><div class="modal-grabber-pill"></div></div><div class="modal-header drag-handle" id="paymentModalHeader" style="border-radius:0"><h2 class="modal-title">${SVG.card} Método de pago</h2><button class="modal-close" onclick="renderSaleModal()">×</button></div><div class="modal-body"><div style="margin-bottom:16px;padding:12px;background:var(--gray-50);border-radius:var(--radius);text-align:center;font-size:15px"><span style="font-weight:600">${state.cart.length} item${state.cart.length!==1?'s':''}</span><span style="color:var(--gray-400);margin:0 8px">·</span><span style="font-weight:700;color:var(--primary)">${formatMoney(state.cart.reduce((s,i)=>s+calculateItemPrice(i),0))}</span></div><div class="payment-methods"><div class="payment-method ${state.selectedPayment==='efectivo'?'selected':''}" onclick="playSound('select');state.selectedPayment='efectivo';renderPaymentModal()">${SVG.cash}<div class="payment-name">Efectivo</div></div><div class="payment-method ${state.selectedPayment==='debito'?'selected':''}" onclick="playSound('select');state.selectedPayment='debito';renderPaymentModal()">${SVG.card}<div class="payment-name">Débito</div><div class="payment-fee">-${formatPct(state.debitFee)}% IVA incl.</div></div><div class="payment-method ${state.selectedPayment==='credito'?'selected':''}" onclick="playSound('select');state.selectedPayment='credito';renderPaymentModal()">${SVG.bank}<div class="payment-name">Crédito</div><div class="payment-fee">-${formatPct(state.creditFee)}% IVA incl.</div></div><div class="payment-method ${state.selectedPayment==='transferencia'?'selected':''}" onclick="playSound('select');state.selectedPayment='transferencia';renderPaymentModal()">${SVG.phone}<div class="payment-name">Transferencia</div></div></div><div class="summary-box"><div class="summary-row"><span>Subtotal</span><span>${formatMoney(total.subtotal)}</span></div>${total.fee>0?`<div class="summary-row"><span>Comisión (IVA incluido)</span><span class="discount">-${formatMoney(total.fee)}</span></div>`:''}<div class="summary-row total"><span>Total</span><span>${formatMoney(total.final)}</span></div></div><div class="info-row">${SVG.location} ${state.currentLocation}</div><div id="paymentWarning" style="display:none;color:var(--danger);font-weight:600;text-align:center;padding:10px;margin-top:8px;background:var(--danger-light);border-radius:var(--radius);font-size:14px">Selecciona un método de pago</div></div><div class="modal-footer"><button class="btn btn-outline" onclick="playSound('back');renderSaleModal()">Volver</button><button class="btn btn-primary" onclick="if(!state.selectedPayment){playSound('error');document.getElementById('paymentWarning').style.display='block'}else{completeSale()}">${state.isDebtSale?'Registrar deuda':'Confirmar venta'}</button></div></div></div>`;
-addDragGesture('paymentModalSwipeArea','dragSheet','down',80,minimizeSale);addDragGesture('paymentModalHeader','dragSheet','down',80,minimizeSale)}
+attachSheetMinimizeGesture('paymentModalSwipeArea');attachSheetMinimizeGesture('paymentModalHeader')}
 
 function completeSale(){
 if(!state.selectedPayment)return showToast('Selecciona método de pago','error');
@@ -2077,11 +2140,14 @@ playSound('success');saveData();closeModal();render();showBigToast('Venta actual
 function openNewProduct(){openProductModal(null)}
 function openEditProduct(id){openProductModal(state.products.find(p=>p.id===id))}
 function openProductModal(product){playSound('open');state.editingProduct=product;state.editingProductStock0=product?product.stock:null;state.tempOffers=product?.offers?JSON.parse(JSON.stringify(product.offers)):[];renderProductModal()}
-function renderProductModal(){const product=state.editingProduct;const cats=state.categories.filter(c=>c!=='Top'&&c!=='Todos');const initMargin=(product&&product.costPrice&&product.salePrice)?realMarginPct(product.costPrice,product.salePrice):null;const initMarginVal=initMargin!=null?(Math.round(initMargin*10)/10):'';const initMarginReal=initMargin!=null?('Margen real: '+formatMarginPct(initMargin)):'';document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-header"><h2 class="modal-title">${product?SVG.edit+' Editar':SVG.plus+' Nuevo'} producto</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body"><label class="photo-upload" onclick="openPhotoOptions()">${state.photoCache[product?.id]?'<img src="'+state.photoCache[product.id]+'" id="photoPreview">':SVG.camera+'<span id="photoPreview">Agregar foto</span>'}</label><input type="file" id="photoInputCamera" accept="image/*" capture="environment" style="display:none" onchange="previewPhoto(this)"><input type="file" id="photoInputGallery" accept="image/*" style="display:none" onchange="previewPhoto(this)"><div class="input-group"><label class="input-label">Nombre</label><input class="input" id="inputProdName" value="${product?.name||''}"></div><div class="input-group"><label class="input-label">Precio de compra</label><input type="number" step="0.1" class="input" id="inputProdCost" value="${product?.costPrice||''}" oninput="onProdCostInput()"></div><div class="input-group"><label class="input-label">Margen %</label><input type="number" step="0.1" class="input" id="inputProdMargin" value="${initMarginVal}" oninput="onProdMarginInput()"><div id="prodMarginHint" class="margin-hint-error" style="display:none">Margen inválido (0–99%)</div></div><div class="input-group"><label class="input-label">Precio de venta (unitario)</label><input type="number" step="0.1" class="input" id="inputProdSale" value="${product?.salePrice||''}" oninput="onProdSaleInput()"><div id="prodMarginReal" class="margin-real-line">${initMarginReal}</div></div><div class="input-group"><label class="input-label" style="display:flex;align-items:center;gap:6px">${SVG.box} Ofertas por cantidad</label><div id="offersContainer">${state.tempOffers.map((o,i)=>`<div class="offer-row"><input type="number" min="2" value="${o.qty}" onchange="updateOffer(${i},'qty',this.value)" placeholder="Cant."><span>uds →</span><span>$</span><input type="number" min="1" value="${o.price}" onchange="updateOffer(${i},'price',this.value)" placeholder="Precio"><button class="btn-remove" onclick="removeOffer(${i})">${SVG.close}</button></div>`).join('')}</div><button class="btn btn-sm btn-outline" style="width:100%;margin-top:8px" onclick="addOffer()">+ Agregar oferta</button></div><div class="input-group"><label class="input-label" style="display:flex;align-items:center;gap:6px">${SVG.location} Precios por ubicación</label>${getDistinctLocationNames().length?getDistinctLocationNames().map((loc,idx)=>{const sp=product?.locationPrices?.[loc];const initM=(product&&product.costPrice&&sp>0)?realMarginPct(product.costPrice,sp):null;const initMClass=initM!=null?(initM<15?'mp-red':initM<=30?'mp-amber':'mp-green'):'';return`<div class="loc-price-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="flex:1;font-size:14px">${loc}</span><input type="number" step="0.1" class="input" id="inputLocPrice_${idx}" placeholder="${product?.salePrice||''}" value="${sp>0?sp:''}" oninput="refreshLocPriceMargins()" style="width:110px"><span class="margin-pill ${initMClass}" id="locMarginPill_${idx}">${initM!=null?formatMarginPct(initM):''}</span></div>`}).join(''):'<div style="font-size:13px;color:var(--gray-400)">Define ubicaciones primero en Ajustes</div>'}</div><div class="input-group"><label class="input-label">Stock</label><input type="number" class="input" id="inputProdStock" value="${product?.stock??0}"></div><div class="input-group"><label class="input-label">Unidad</label><select class="input" id="inputProdUnit" onchange="document.getElementById('gramStepGroup').style.display=this.value==='g'?'block':'none'"><option value="u" ${product?.unit!=='g'?'selected':''}>Unidad</option><option value="g" ${product?.unit==='g'?'selected':''}>Gramos</option></select></div><div class="input-group" id="gramStepGroup" style="display:${product?.unit==='g'?'block':'none'}"><label class="input-label">Gramos por click (ej: 250, 500, 1000)</label><input type="number" class="input" id="inputGramStep" value="${product?.gramStep||250}" min="1"></div><div class="input-group"><label class="input-label">Categoría</label><select class="input" id="inputProdCat">${cats.map(c=>'<option value="'+c+'" '+(product?.category===c?'selected':'')+'>'+c+'</option>').join('')}</select></div></div><div class="modal-footer">${product?'<button class="btn btn-danger" onclick="confirmDeleteProduct('+product.id+')">'+SVG.trash+'</button>':''}<button class="btn btn-outline" onclick="playSound('back');closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveProduct()">Guardar</button></div></div></div>`;refreshLocPriceMargins()}
+function renderProductModal(){const product=state.editingProduct;const cats=state.categories.filter(c=>c!=='Top'&&c!=='Todos');const initMargin=(product&&product.costPrice&&product.salePrice)?realMarginPct(product.costPrice,product.salePrice):null;const initMarginVal=initMargin!=null?(Math.round(initMargin*10)/10):'';const initMarginReal=initMargin!=null?('Margen real: '+formatMarginPct(initMargin)):'';document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-header"><h2 class="modal-title">${product?SVG.edit+' Editar':SVG.plus+' Nuevo'} producto</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body"><label class="photo-upload" onclick="openPhotoOptions()">${state.photoCache[product?.id]?'<img src="'+state.photoCache[product.id]+'" id="photoPreview">':SVG.camera+'<span id="photoPreview">Agregar foto</span>'}</label><input type="file" id="photoInputCamera" accept="image/*" capture="environment" style="display:none" onchange="previewPhoto(this)"><input type="file" id="photoInputGallery" accept="image/*" style="display:none" onchange="previewPhoto(this)"><div class="input-group"><label class="input-label">Nombre</label><input class="input" id="inputProdName" value="${product?.name||''}"></div><div class="input-group"><label class="input-label">Precio de compra</label><input type="number" step="0.1" class="input" id="inputProdCost" value="${product?.costPrice||''}" oninput="onProdCostInput()"></div><div class="input-group"><label class="input-label">Margen %</label><input type="number" step="0.1" class="input" id="inputProdMargin" value="${initMarginVal}" oninput="onProdMarginInput()"><div id="prodMarginHint" class="margin-hint-error" style="display:none">Margen inválido (0–99%)</div></div><div class="input-group"><label class="input-label">Precio de venta (unitario)</label><input type="number" step="0.1" class="input" id="inputProdSale" value="${product?.salePrice||''}" oninput="onProdSaleInput()"><div id="prodMarginReal" class="margin-real-line">${initMarginReal}</div></div><div class="input-group"><label class="input-label" style="display:flex;align-items:center;gap:6px">${SVG.box} Ofertas por cantidad</label><div id="offersContainer">${state.tempOffers.map((o,i)=>`<div class="offer-row"><input type="number" min="2" value="${o.qty}" onchange="updateOffer(${i},'qty',this.value)" placeholder="Cant."><span>uds →</span><span>$</span><input type="number" min="1" value="${o.price}" onchange="updateOffer(${i},'price',this.value)" placeholder="Precio"><button class="btn-remove" onclick="removeOffer(${i})">${SVG.close}</button></div>`).join('')}</div><button class="btn btn-sm btn-outline" style="width:100%;margin-top:8px" onclick="addOffer()">+ Agregar oferta</button></div><div class="input-group"><div class="loc-acc-head" id="locAccHead" onclick="toggleLocPrices()"><span class="input-label" style="display:flex;align-items:center;gap:6px;margin:0">${SVG.location} Precios por ubicación</span><span class="loc-acc-sum" id="locAccSum">${locPriceSummary(product&&product.locationPrices)}</span><span class="loc-acc-chev" id="locAccChev">${SVG.chevronDown}</span></div><div id="locAccBody" style="display:none;margin-top:10px">${getDistinctLocationNames().length?getDistinctLocationNames().map((loc,idx)=>{const sp=product?.locationPrices?.[loc];const initM=(product&&product.costPrice&&sp>0)?realMarginPct(product.costPrice,sp):null;const initMClass=initM!=null?(initM<15?'mp-red':initM<=30?'mp-amber':'mp-green'):'';return`<div class="loc-price-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="flex:1;font-size:14px">${loc}</span><input type="number" step="0.1" class="input" id="inputLocPrice_${idx}" placeholder="${product?.salePrice||''}" value="${sp>0?sp:''}" oninput="refreshLocPriceMargins();refreshLocPriceSummary()" style="width:110px"><span class="margin-pill ${initMClass}" id="locMarginPill_${idx}">${initM!=null?formatMarginPct(initM):''}</span></div>`}).join(''):'<div style="font-size:13px;color:var(--gray-400)">Define ubicaciones primero en Ajustes</div>'}</div></div><div class="input-group"><label class="input-label">Stock</label><input type="number" class="input" id="inputProdStock" value="${product?.stock??0}"></div><div class="input-group"><label class="input-label">Unidad</label><select class="input" id="inputProdUnit" onchange="document.getElementById('gramStepGroup').style.display=this.value==='g'?'block':'none'"><option value="u" ${product?.unit!=='g'?'selected':''}>Unidad</option><option value="g" ${product?.unit==='g'?'selected':''}>Gramos</option></select></div><div class="input-group" id="gramStepGroup" style="display:${product?.unit==='g'?'block':'none'}"><label class="input-label">Gramos por click (ej: 250, 500, 1000)</label><input type="number" class="input" id="inputGramStep" value="${product?.gramStep||250}" min="1"></div><div class="input-group"><label class="input-label">Categoría</label><select class="input" id="inputProdCat">${cats.map(c=>'<option value="'+c+'" '+(product?.category===c?'selected':'')+'>'+c+'</option>').join('')}</select></div></div><div class="modal-footer">${product?'<button class="btn btn-danger" onclick="confirmDeleteProduct('+product.id+')">'+SVG.trash+'</button>':''}<button class="btn btn-outline" onclick="playSound('back');closeModal()">Cancelar</button><button class="btn btn-primary" onclick="saveProduct()">Guardar</button></div></div></div>`;refreshLocPriceMargins()}
 function updateMarginRealLine(cost,price){const el=document.getElementById('prodMarginReal');if(!el)return;if(!cost||!price){el.textContent='';return}el.textContent='Margen real: '+formatMarginPct(realMarginPct(cost,price))}
 function onProdCostInput(){const cost=parseFloat(document.getElementById('inputProdCost').value);const unit=document.getElementById('inputProdUnit').value;const marginEl=document.getElementById('inputProdMargin');const hint=document.getElementById('prodMarginHint');const marginRaw=marginEl.value;if(marginRaw===''){const price=parseFloat(document.getElementById('inputProdSale').value);updateMarginRealLine(cost,price);refreshLocPriceMargins();return}const m=parseFloat(marginRaw);if(isNaN(m)||m<0||m>=100){hint.style.display='block';refreshLocPriceMargins();return}hint.style.display='none';if(!isNaN(cost)&&cost>0){const price=priceFromMargin(cost,m,unit);document.getElementById('inputProdSale').value=price;updateMarginRealLine(cost,price)}refreshLocPriceMargins()}
 function onProdMarginInput(){const marginEl=document.getElementById('inputProdMargin');const hint=document.getElementById('prodMarginHint');const cost=parseFloat(document.getElementById('inputProdCost').value);const unit=document.getElementById('inputProdUnit').value;if(marginEl.value===''){hint.style.display='none';refreshLocPriceMargins();return}const m=parseFloat(marginEl.value);if(isNaN(m)||m<0||m>=100){hint.style.display='block';refreshLocPriceMargins();return}hint.style.display='none';if(!isNaN(cost)&&cost>0){const price=priceFromMargin(cost,m,unit);document.getElementById('inputProdSale').value=price;updateMarginRealLine(cost,price)}refreshLocPriceMargins()}
 function onProdSaleInput(){const price=parseFloat(document.getElementById('inputProdSale').value);const cost=parseFloat(document.getElementById('inputProdCost').value);const marginEl=document.getElementById('inputProdMargin');const hint=document.getElementById('prodMarginHint');if(!isNaN(cost)&&cost>0&&!isNaN(price)&&price>0){const real=realMarginPct(cost,price);marginEl.value=Math.round(real*10)/10;hint.style.display='none';updateMarginRealLine(cost,price)}else{updateMarginRealLine(cost,price)}refreshLocPriceMargins()}
+function locPriceSummary(prices){const names=getDistinctLocationNames();const sp=names.filter(n=>prices&&prices[n]>0);if(!names.length)return'Define ubicaciones en Ajustes';if(!sp.length)return'Todas al precio base';if(sp.length<=2)return sp.map(n=>n+' '+formatMoney(prices[n])).join(' · ');return sp.length+' con precio especial'}
+function toggleLocPrices(){const b=document.getElementById('locAccBody'),c=document.getElementById('locAccChev');if(!b)return;const open=b.style.display==='none';b.style.display=open?'block':'none';if(c)c.style.transform=open?'rotate(180deg)':'';playSound('select')}
+function refreshLocPriceSummary(){const el=document.getElementById('locAccSum');if(!el)return;const o={};getDistinctLocationNames().forEach((loc,idx)=>{const i=document.getElementById('inputLocPrice_'+idx);const v=i?parseFloat(i.value):NaN;if(v>0)o[loc]=v});el.textContent=locPriceSummary(o)}
 function refreshLocPriceMargins(){const cost=parseFloat(document.getElementById('inputProdCost').value);const normalPrice=parseFloat(document.getElementById('inputProdSale').value);getDistinctLocationNames().forEach((loc,idx)=>{const inp=document.getElementById('inputLocPrice_'+idx);const pill=document.getElementById('locMarginPill_'+idx);if(!inp||!pill)return;inp.placeholder=isNaN(normalPrice)?'':normalPrice;const val=parseFloat(inp.value);const price=(!isNaN(val)&&val>0)?val:normalPrice;if(isNaN(cost)||isNaN(price)||cost<=0||price<=0){pill.textContent='';pill.className='margin-pill';return}const m=realMarginPct(cost,price);const mClass=m<15?'mp-red':m<=30?'mp-amber':'mp-green';pill.className='margin-pill '+mClass;pill.textContent=formatMarginPct(m)})}
 function addOffer(){state.tempOffers.push({qty:2,price:0});renderProductModal()}
 function removeOffer(i){state.tempOffers.splice(i,1);renderProductModal()}

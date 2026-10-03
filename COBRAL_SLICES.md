@@ -481,3 +481,13 @@ Requested by Jimbo: updater like tsc-web so improvements reach the phone without
 - Tests: `tools/updater-test.mjs` 17/17 on the emulator against the real GitHub v6.2 asset (404/same/older/corrupt manifest, non-GitHub / http URL
   refused, escaped notes, permission redirect, wrong SHA refused, real download → installer → 61→62, data intact). Regressions on the 6.3 APK:
   regress 17/18 (R18 only reports the expected 404 of update.json before the first release exists), sync 5/5, photos 4/4.
+
+## E3 · Cart morph animation + collapsible location prices (v6.4, 2026-10-03)
+Requested by Jimbo after seeing the phone: (1) dragging the minimized cart up only moved the gold bar and the sheet appeared on release →
+now the real sheet morphs bar⇄sheet following the finger (position/size/colour of the sheet are animated, content fades; same when
+minimizing by dragging down, with the back button, or programmatically): `morphSetup/morphApply/morphTween`, `attachSheetMinimizeGesture`,
+`attachMiniBarGesture`, `minimizeSale`, `expandSale` (thresholds as before: >80 css px down minimizes, >60 up expands; tap on the bar does
+not expand). (2) Product editor: location prices are ONE collapsible row with a live summary ("Mann $7.500 · Los Alerces $7.900",
+"N con precio especial", "Todas al precio base"); inputs stay in the DOM so saving works collapsed. (3) The day-off name ("Libre", "Día libre")
+is not a place: `getDistinctLocationNames()` excludes it (existing prices under that name are preserved on save).
+Verified on the emulator with mid-gesture screenshots (down and up), regress 18/18.

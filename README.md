@@ -7,7 +7,7 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
 |---|---|
 | **Web** | https://cobral.web.app |
 | **Descargar la APK** | https://cobral.web.app/descargar/ (el archivo sale de las [Releases](https://github.com/theperfectory-blip/cobral-app/releases/latest) de este repo) |
-| **Versión actual** | 6.2 (`versionCode 62`) |
+| **Versión actual** | 6.4 (`versionCode 64`) |
 
 ## Qué hace
 
