@@ -491,3 +491,11 @@ not expand). (2) Product editor: location prices are ONE collapsible row with a 
 "N con precio especial", "Todas al precio base"); inputs stay in the DOM so saving works collapsed. (3) The day-off name ("Libre", "Día libre")
 is not a place: `getDistinctLocationNames()` excludes it (existing prices under that name are preserved on save).
 Verified on the emulator with mid-gesture screenshots (down and up), regress 18/18.
+
+## E4 · Day-off selector + day strip fix (v6.5, 2026-10-03)
+Requested by Jimbo: (1) typing "Libre" for a day off is replaced by a per-day selector in Ubicaciones: known places + "Día libre (no
+trabajo)" (stored as 'Libre' for compatibility; row and day name struck through) + "+ Nuevo lugar…"; "Ubicación actual" uses the same
+selector; "Libre" is shown as "Día libre" and is not offered as a place (prices, filters); changing a day to/from day off is never treated as
+a rename of a place (so location prices are not moved). (2) Day strip (Home/Ventas): when another day is selected today's chip was also gold
+and wider → now every chip has the same size, the only highlight is the selected day, today is marked only by a bold "Hoy" label, and the pinned
+"Hoy" button (fixed width) is the single gold shortcut when away from today (design choice: option 1, keeps the strip chronological).
