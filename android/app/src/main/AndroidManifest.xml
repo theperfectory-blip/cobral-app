@@ -31,4 +31,6 @@
         </provider>
     </application>
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 8+: acceso especial para instalar APKs fuera de Play Store (auto-actualizador, AppUpdaterPlugin). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

@@ -4,6 +4,7 @@
 //   GET  /img/<n>                     the uploaded bytes (CORS *)
 //   GET  /__stats                     {uploads, presets:[…], mode}
 //   POST /__mode/<ok|nopreset|down>   ok = normal; nopreset = 400 "Upload preset not found"; down = 503
+//   POST /__manifest, GET /update.json   update manifest served to the app's updater (tools/updater-test.mjs)
 //   POST /__reset                     forget everything
 // The app only honours localStorage.cobralCloudinaryBase when it runs on hostname "localhost"
 // (web served on localhost, or the Capacitor WebView; for the Android emulator also `adb reverse tcp:9199 tcp:9199`).
@@ -13,6 +14,7 @@ const PORT = Number(process.argv[2] || 9199);
 let mode = 'ok';
 let uploads = [];           // {type, bytes:Buffer}
 let presets = [];
+let manifest = '';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const send = (res, code, body, headers = {}) => { res.writeHead(code, { ...cors, ...headers }); res.end(body); };
@@ -43,6 +45,9 @@ http.createServer((req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, '');
   if (url.pathname === '/__stats') return send(res, 200, JSON.stringify({ uploads: uploads.length, presets, mode }), { 'Content-Type': 'application/json' });
   if (url.pathname.startsWith('/__mode/')) { mode = url.pathname.split('/')[2]; return send(res, 200, mode); }
+  // update manifest for tools/updater-test.mjs: POST /__manifest (JSON body) sets it, GET /update.json serves it
+  if (url.pathname === '/__manifest' && req.method === 'POST') { const c = []; req.on('data', d => c.push(d)); req.on('end', () => { manifest = Buffer.concat(c).toString(); send(res, 200, 'ok'); }); return; }
+  if (url.pathname === '/update.json') return manifest ? send(res, 200, manifest, { 'Content-Type': 'application/octet-stream' }) : send(res, 404, 'no manifest');
   if (url.pathname === '/__reset') { uploads = []; presets = []; mode = 'ok'; return send(res, 200, 'reset'); }
 
   const img = /^\/img\/(\d+)/.exec(url.pathname);

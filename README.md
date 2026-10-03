@@ -97,6 +97,7 @@ cuentas desechables `@cobral.test`. No las corras contra el teléfono real ni co
 | `node tools/fake-cloudinary.mjs` | Cloudinary falso local para las pruebas de fotos (dejar corriendo) |
 | `node tools/photos-web-e2e.mjs` | fotos entre dos navegadores: subir, bajar, reemplazar, borrar, servicio caído y sin conexión (requiere servidor estático de `www/` en `localhost:5173`) |
 | `node tools/regress-photos.mjs` | fotos en el emulador de Android, incluida la subida de las fotos que ya tenía el teléfono |
+| `bash tools/build-variant.sh <out.apk> <código> <nombre>` + `node tools/updater-test.mjs <vieja.apk> <código> <nombre> <urlGitHub> <sha256>` | prueba del actualizador en el emulador: aviso, permiso, descarga real desde GitHub, verificación SHA-256, instalador de Android y datos intactos |
 | `node tools/restore-backup.mjs <respaldo.json> --yes` | restaura un respaldo (formato `cobral-respaldo-1`: localStorage + fotos de IndexedDB) en la app depurable conectada; solo escribe en emuladores salvo `--allow-device` |
 | `bash tools/build-old.sh <out.apk>` + `node tools/upgrade-test.mjs <vieja.apk> ../Cobral_v<nueva>.apk` | prueba de actualización: instala una versión antigua con datos y fotos, instala la nueva encima y verifica que no se perdió nada; también comprueba que Android rechaza una APK con otra firma sin tocar los datos |
 | `node tools/deskshot.mjs <url> <prefijo>` | capturas de la web a varios anchos, claro y oscuro |
@@ -105,18 +106,27 @@ cuentas desechables `@cobral.test`. No las corras contra el teléfono real ni co
 
 Mismo modelo que `tsc-web`: **Firebase solo aloja la web; la APK vive en este repo** (GitHub Release).
 
-**APK** (cada versión):
-1. Subir la versión en `android/app/build.gradle` (`versionCode`/`versionName`), el `<title>` de `www/index.html`
-   y el nombre de caché de `www/sw.js`.
+**APK** (cada versión), con actualizador integrado:
+1. Subir la versión en `android/app/build.gradle` (`versionCode` siempre **mayor**, `versionName`), el `<title>` de
+   `www/index.html` (`Cobral vX.Y`) y el nombre de caché de `www/sw.js`; commit y `git push`.
 2. Compilar con `bash tools/build.sh` y copiar `android/app/build/outputs/apk/debug/app-debug.apk` como
-   `../Cobral_v<versión>.apk`.
-3. Crear la Release con **dos copias** del archivo: la versionada y la de nombre fijo `Cobral.apk`, que es la que
-   enlaza la web (`.../releases/latest/download/Cobral.apk`, apunta siempre a la última):
+   `../Cobral_v<versión>.apk`. **Siempre con la misma llave de firma** (`~/.android/debug.keystore`); con otra llave
+   las apps ya instaladas no podrían actualizarse.
+3. Escribir las novedades en un archivo de texto (se muestran tal cual en el aviso de la app) y publicar:
 
 ```bash
-cp ../Cobral_v6.1.apk /tmp/Cobral.apk
-gh release create v6.1 ../Cobral_v6.1.apk /tmp/Cobral.apk --title "Cobral v6.1" --notes "..."
+bash tools/release.sh notas.txt
 ```
+
+`tools/release.sh` se niega a publicar si el árbol de git no está limpio y subido, si el título/versión no coinciden o si la
+APK está firmada con otra llave. Crea la Release con 3 archivos: `Cobral_v<versión>.apk`, `Cobral.apk` (nombre fijo que enlaza
+la web) y `update.json` (`versionCode`, `versionName`, `apkUrl`, `sha256`, `notes`).
+
+**Actualizador (solo APK):** al abrir la app (máx. cada 6 h) y desde *Configuración → Buscar actualización*, la app lee
+`releases/latest/download/update.json`, compara `versionCode` y, si hay una mayor, muestra las novedades con *Actualizar / Más
+tarde*. Descarga la APK desde GitHub (el plugin `AppUpdater` solo acepta `https://github.com/…`), verifica el SHA-256 y abre el
+instalador de Android; se instala encima y los datos se conservan. La primera vez Android pide activar *Permitir desde esta
+fuente*. Código: `android/app/src/main/java/cl/cobral/ventas/AppUpdaterPlugin.java` y el bloque ACTUALIZADOR de `www/index.html`.
 
 **Web y página de descarga** (Firebase Hosting sirve `dist-web/`, no `www/` directamente):
 

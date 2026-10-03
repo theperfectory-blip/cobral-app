@@ -468,3 +468,16 @@ showed placeholders and photos were lost with the device.
   → 6.2 over-install succeeds (versionCode 56→62, firstInstallTime kept).
 - Rule for the phone: install the new APK OVER the old app, never uninstall first. If Android refuses, nothing changed.
 
+
+## E2 · In-app updater (2026-10-02/03, v6.3)
+Requested by Jimbo: updater like tsc-web so improvements reach the phone without reinstalling by hand.
+- Native `AppUpdaterPlugin` (permission check, download, SHA-256, installer intent) + JS block ACTUALIZADOR in index.html (check on open
+  max every 6 h, dialog with notes, Configuración → Buscar actualización, "Más tarde" remembered 24 h). `update.json` is a release asset
+  (`tools/release.sh` builds it and refuses to publish with a different signing key / dirty tree / mismatched versions).
+- Found by testing on the emulator: Android's DownloadManager got stuck in PAUSED/WAITING_TO_RETRY with the file already complete (UI frozen at
+  "Descargando…", also documented in TSC) → the plugin now downloads itself with HttpURLConnection (retries, timeouts, real progress, size +
+  SHA-256 check). Google Play Protect interrupts sideloaded installs ("App scan recommended" → More details → Install without scanning); the
+  dialog and /descargar/ now explain it. The first real-world report (Jimbo could not install from the phone) was most likely this.
+- Tests: `tools/updater-test.mjs` 17/17 on the emulator against the real GitHub v6.2 asset (404/same/older/corrupt manifest, non-GitHub / http URL
+  refused, escaped notes, permission redirect, wrong SHA refused, real download → installer → 61→62, data intact). Regressions on the 6.3 APK:
+  regress 17/18 (R18 only reports the expected 404 of update.json before the first release exists), sync 5/5, photos 4/4.
