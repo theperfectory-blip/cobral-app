@@ -499,3 +499,14 @@ selector; "Libre" is shown as "Día libre" and is not offered as a place (prices
 a rename of a place (so location prices are not moved). (2) Day strip (Home/Ventas): when another day is selected today's chip was also gold
 and wider → now every chip has the same size, the only highlight is the selected day, today is marked only by a bold "Hoy" label, and the pinned
 "Hoy" button (fixed width) is the single gold shortcut when away from today (design choice: option 1, keeps the strip chronological).
+
+## E5 · Remove places + packaging units (v6.6, 2026-10-03)
+Requested by Jimbo: (1) old places cannot be deleted (they come from past sales and the week) → Ubicaciones has a "Gestionar lugares"
+section: per place "N ventas · N días · N precios" and a two-tap remove (first tap arms "¿Quitar?", auto-disarms after 3 s). Removing
+adds the name to `state.hiddenLocations` (saved in `ventasApp` and synced inside the settings doc), clears it from the week/current location,
+deletes its entries from products' `locationPrices` and resets filters; **sales history is untouched**; choosing/typing the name again un-hides it.
+Hidden places are excluded from `locPlaces()` (selectors) and from the Home/Ventas filters. (2) Packaging: optional product field `packSize`
+(units — or grams — per box/bundle; optional key in `sync-core` so clearing it deletes it remotely). Editor shows "Stock = N embalajes + M sueltas"
+and "+ Sumar embalajes al stock"; the inventory list/table shows "+ Embalaje (N)" / "+" that opens "Ingresar stock" (packs + loose units, live
+preview "Stock 36 → 65") and adds the total to the stock (synced as a stock delta like any sale).
+Verified on the emulator (real editor/modal, persistence) and desktop screenshots.

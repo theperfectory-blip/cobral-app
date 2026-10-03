@@ -153,7 +153,7 @@ export function attachBaseStock(shadowStockMap, upserts) {
 /** Product keys that are optional in the app (may be absent from a local doc). Because a merge-set never
  *  removes fields, a key that is absent locally must be written as deleteField() or the old value would
  *  survive in the cloud and come back on other devices (e.g. removing the last locationPrices entry). */
-export const OPTIONAL_PRODUCT_KEYS = ['locationPrices', 'offers', 'gramStep', 'imageUrl'];
+export const OPTIONAL_PRODUCT_KEYS = ['locationPrices', 'offers', 'gramStep', 'imageUrl', 'packSize'];
 
 /** stock delta vs the shadow base: a number (may be 0) when BOTH the base and doc.stock are finite numbers,
  *  otherwise null ("unknown base" -> caller writes the absolute stock). Pure. */
