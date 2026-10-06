@@ -564,3 +564,25 @@ so this never showed there.) Now: typing an amount shows "Comisión $X / Te abon
 (the main use: just calculate); keyboard "done"/Enter hides the keyboard; the amount field scrolls to the top on focus; footer
 "Cerrar" (outline) warns once if an amount was typed but not added; adding plays the sound + toast "Crédito $6.600 agregado · te
 abonan $6.386". Verified with real taps on the emulator (Oct 3, $6.600 crédito → $214 / $6.386 = portal); sales untouched (296).
+
+## E9 · Cloud upload repair + duplicate sale ids (v6.8.2, 2026-10-05)
+Jimbo created his account on the phone (2.8k sales); the web showed only 450 sales (Jan–Mar 1) while the phone said
+"Sincronizado". Findings:
+- Only the first first-sync batch (450 = MAX_BATCH_OPS) reached the server; the shadow is advanced when a write is queued
+  (offline-first), so the 6 lost batches + settings were never retried. Reproduced with his backup on the emulators: with the app in
+  the foreground all batches arrive, so the queue was lost on the phone (app backgrounded/killed mid-upload).
+- 28 sales (all cash, Jan–Feb, from an old CSV import) shared ids with another sale: the import generated `Date.now()+random|0`
+  (32-bit, negative, colliding). mergeFirstSync keys by id → the phone kept one of each pair (2863 → 2835) at first login.
+Fixes:
+- `cobral-cloud.js`: persisted **unacked ledger** (`cobralCloudUnacked:<uid>`, "col/id" per dispatched write, cleared on ack or
+  reject); on sign-in/launch every leftover entry is dropped from the shadow (`recoverUnacked`) so the next push re-sends it; status
+  stays 'pending' while the ledger is non-empty. New `verify()`: reads ids FROM THE SERVER and drops from the shadow what the server
+  lacks (+ settings). App (APK): `cloudRepair()` on every launch with a user — verify once per device (`cobralCloudVerified:<uid>`,
+  60 s cap, then continues in background) + push. Cuenta modal: "Revisar sincronización" (forced verify + push).
+- App: `ensureUniqueIds()` on load and before first login (a duplicate gets a fresh id, nothing is dropped); CSV import uses
+  `freshIds()` (negative 16-digit, unique). First login marks the device verified.
+- Recovery of the 28: `respaldo-telefono-2026-10-02/ventas-recuperadas-28.csv` (outside the repo, private) built from the 2026-10-03
+  backup, imported with Ventas → Importar → Agregar (skips existing ticket numbers).
+Tests: `tools/sync-repair-e2e.mjs` (emulators): A) server lost 550 sales + settings → verify finds 551 → push restores 1000;
+B) 600 writes queued offline then the client is abandoned → next launch recovers 601 ledger entries and uploads them. Web repro with the
+real backup: 2863 kept (28 re-id'd), 2863 uploaded; recovery CSV import → 28 sales identical to the originals, ids unique.

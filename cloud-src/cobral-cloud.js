@@ -45,6 +45,11 @@
 //     use — unchanged behavior. clearIndexedDbPersistence can reject if another tab still holds the
 //     same Firestore instance open (persistentMultipleTabManager); that failure is swallowed here —
 //     callers should still proceed with clearing their own app-level storage and reloading.
+//   verify() -> Promise<{ ok:true, missing:number } | { ok:false, reason }>
+//     Reads every doc id of this user FROM THE SERVER and drops from the shadow each doc the shadow believes is
+//     uploaded but the server does not have (and the settings doc), so the next push() re-sends them. Costs one read
+//     per server doc: the app runs it once per device (repair of uploads lost before the unacked ledger existed) and
+//     from the Cuenta modal on demand.
 //   resetPassword(email) -> Promise<{ ok:true } | { ok:false, message }>
 //     `message` is a short Chilean-Spanish string suitable for direct display in the UI.
 //
@@ -122,6 +127,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocFromServer,
+  getDocsFromServer,
   onSnapshot,
   writeBatch,
   serverTimestamp,
@@ -286,6 +293,13 @@ export function createClient() {
   // is called. inFlightCommits counts commits we've called but that haven't settled yet, so
   // status() can report 'pending'/'offline' correctly without waiting on the network.
   let inFlightCommits = 0;
+  // Unacked ledger (E9): "col/id" of every write dispatched but not yet acked by the server, persisted in
+  // localStorage. The shadow is advanced optimistically when a write is queued (offline-first), so if Firestore's
+  // local queue loses it (app killed mid-upload with a non-persistent cache, a WebView that dropped IndexedDB…) the
+  // shadow would claim it is uploaded forever. On the next sign-in/launch every entry still in the ledger is dropped
+  // from the shadow, so the next push() re-sends it (an idempotent set). Seen on Jimbo's phone: 1 of 7 first-sync
+  // batches reached the server, the status said 'synced' and the rest was never retried.
+  let unacked = {};
   let manualOffline = false; // set by the test-only _network() hook (tools/cloud-e2e.mjs)
 
   // firstSync tracking: incremented when firstSync starts, decremented after dispatchOps is called
@@ -301,7 +315,7 @@ export function createClient() {
 
   // Test-only instrumentation (not part of the documented public API): lets tools/cloud-e2e.mjs
   // assert "no new writes were dispatched" without reaching into Firestore internals.
-  const debugStats = { writesDispatched: 0, commitsInFlight: 0 };
+  const debugStats = { writesDispatched: 0, commitsInFlight: 0, recoveredUnacked: 0 };
 
   function setStatus(next) {
     if (next === currentStatus) return;
@@ -323,7 +337,7 @@ export function createClient() {
    *  (listenerPending) so status reflects all pending writes without awaiting waitForPendingWrites. */
   function refreshStatus() {
     if (!currentUid) { setStatus('signed-out'); return; }
-    const hasUnackedWrites = inFlightCommits > 0 || firstSyncRunning > 0 || Object.values(listenerPending).some(Boolean);
+    const hasUnackedWrites = inFlightCommits > 0 || firstSyncRunning > 0 || Object.values(listenerPending).some(Boolean) || Object.keys(unacked).length > 0;
     if (hasUnackedWrites) {
       setStatus(currentlyOnline() ? 'pending' : 'offline');
     } else if (currentStatus !== 'error') {
@@ -348,6 +362,29 @@ export function createClient() {
 
   function persistShadow(uid) {
     try { store.set(shadowKey(uid), JSON.stringify(shadow)); } catch (e) { /* ignore */ }
+  }
+
+  function unackedKey(uid) {
+    return 'cobralCloudUnacked:' + uid;
+  }
+
+  function persistUnacked(uid) {
+    try { store.set(unackedKey(uid), JSON.stringify(unacked)); } catch (e) { /* ignore */ }
+  }
+
+  /** Drops every ledger entry left by a previous launch from the shadow (so the next push() re-sends it). */
+  function recoverUnacked(uid) {
+    let left = {};
+    try { left = JSON.parse(store.get(unackedKey(uid)) || '{}') || {}; } catch (e) { left = {}; }
+    const keys = Object.keys(left);
+    for (const k of keys) {
+      const i = k.indexOf('/');
+      if (i > 0) forgetShadowEntry(k.slice(0, i), k.slice(i + 1));
+    }
+    unacked = {};
+    if (keys.length) { persistShadow(uid); persistUnacked(uid); }
+    debugStats.recoveredUnacked = keys.length;
+    return keys.length;
   }
 
   function collectionRef(uid, col) {
@@ -424,11 +461,13 @@ export function createClient() {
 
         currentUid = user.uid;
         shadow = loadShadow(currentUid);
+        recoverUnacked(currentUid);
         attachListeners(currentUid);
         refreshStatus();
       } else {
         currentUid = null;
         shadow = emptyShadow();
+        unacked = {};
         setStatus('signed-out');
       }
       try { onUserCb(user); } catch (e) { /* caller's problem */ }
@@ -629,6 +668,8 @@ export function createClient() {
     // Reflect the queued writes right away (not only when the first ack lands): otherwise the
     // status keeps saying 'synced' during a long first upload and the user may close the app thinking it's done.
     queueMicrotask(refreshStatus);
+    for (const op of ops) unacked[op.collectionName + '/' + op.docId] = 1;
+    persistUnacked(uid);
     for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
       const chunk = ops.slice(i, i + MAX_BATCH_OPS);
       const batch = writeBatch(db);
@@ -641,6 +682,7 @@ export function createClient() {
       // pending write); tokens captured now so a later dispatch of the same id isn't released early.
       const tokens = chunk.map((op) => awaiting.get(op.collectionName + '/' + op.docId));
       const releaseChunk = () => chunk.forEach((op, k) => { if (tokens[k] !== undefined) releaseDirty(op.collectionName, op.docId, tokens[k]); });
+      const clearLedger = () => { for (const op of chunk) delete unacked[op.collectionName + '/' + op.docId]; persistUnacked(uid); };
 
       inFlightCommits++;
       debugStats.commitsInFlight = inFlightCommits;
@@ -651,6 +693,7 @@ export function createClient() {
         inFlightCommits--;
         debugStats.commitsInFlight = inFlightCommits;
         releaseChunk();
+        clearLedger();
         refreshStatus();
       }).catch((err) => {
         if (gen !== authGen) return; // commit from a previous auth session; ignore
@@ -659,6 +702,7 @@ export function createClient() {
         releaseChunk();
         for (const op of chunk) forgetShadowEntry(op.collectionName, op.docId);
         persistShadow(uid);
+        clearLedger(); // forgotten from the shadow: the next push() retries them
         setStatus('error');
       });
     }
@@ -765,6 +809,38 @@ export function createClient() {
   }
 
   // -------------------------------------------------------------------------
+  // verify() — compare the shadow with what the server really has (see API doc above)
+  // -------------------------------------------------------------------------
+
+  async function verify() {
+    if (!currentUid) return { ok: false, reason: 'signed-out' };
+    const uid = currentUid;
+    const gen = authGen;
+    try {
+      const onServer = {};
+      for (const col of COLLECTIONS) {
+        const snap = await getDocsFromServer(collectionRef(uid, col));
+        onServer[col] = new Set();
+        snap.forEach((d) => onServer[col].add(d.id));
+      }
+      const settingsSnap = await getDocFromServer(settingsRef(uid));
+      if (gen !== authGen) return { ok: false, reason: 'auth-changed' };
+      let missing = 0;
+      for (const col of COLLECTIONS) {
+        for (const id of Object.keys(shadow[col] || {})) {
+          if (!onServer[col].has(id)) { forgetShadowEntry(col, id); missing++; }
+        }
+      }
+      if (shadow.settings && !settingsSnap.exists()) { forgetShadowEntry('settings', 'settings'); missing++; }
+      if (missing) persistShadow(uid);
+      debugStats.verifyMissing = missing;
+      return { ok: true, missing };
+    } catch (err) {
+      return { ok: false, reason: (err && err.code) || 'error' };
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Auth
   // -------------------------------------------------------------------------
 
@@ -843,6 +919,7 @@ export function createClient() {
     currentUser: currentUserFn,
     push,
     firstSync,
+    verify,
     status,
     _network,
     _debugStats,
