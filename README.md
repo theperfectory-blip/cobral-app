@@ -12,7 +12,7 @@ teléfono (Android), y con una cuenta sincroniza con una **versión web** pensad
 ## Qué hace
 
 - **Nueva venta**: tarjetas de producto con mitades táctiles (izquierda resta, derecha suma), carrito que se
-  minimiza y maximiza con gestos, medios de pago con comisión (débito/crédito, IVA incluido), ofertas por cantidad y
+  minimiza y maximiza con gestos, medios de pago con comisión (débito/crédito: Haulmer con % IVA incluido o Getnet con su fórmula exacta y la UF oficial del día; Calculadora Getnet para los vouchers del día), ofertas por cantidad y
   precios por ubicación (cada feria puede tener su precio).
 - **Inicio / Top ventas**: ingresos, costo, margen y ranking de productos por día, semana, mes o año, con "Hoy" fijo
   y calendario que parte en lunes; al tocar un producto se ven sus ventas.

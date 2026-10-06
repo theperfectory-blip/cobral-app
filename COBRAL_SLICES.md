@@ -520,3 +520,39 @@ existing place with another spelling reuses the existing one (`canonLoc`); locat
 has a "Quitados" list with "Restaurar". Dark-mode fixes for the struck-through day. Tested with the phone's real data in the emulator
 (restore, retype with accent, price saved/applied with either spelling). The save flow itself worked on the emulator with touch input, so the
 original failure was the removed-place state + price list limited to weekdays.
+
+## E7 · Calculadora Getnet with the official UF of the day (v6.8, 2026-10-05)
+Requested by Jimbo: he added a Getnet POS (contract 25-09-2026) next to the Haulmer one. Getnet charges % + a fixed UF amount per
+transaction, plus IVA, so the app's flat "% IVA incluido" (kept as is, it belongs to Haulmer) can't give the real deposit. Step 1 = a standalone
+calculator (header button / desktop sidebar "Calculadora Getnet"): pick the day, type each voucher amount, tap Débito/Crédito/Prepago/Extranjera
+→ fee and deposit per voucher + day totals (sales, fee split into % / fixed / IVA, effective %, "Te abonan").
+- Tariffs (contract, POS presencial, sin IVA): débito 0,63 % + 0,0015 UF · crédito 1,61 % + 0,0018 UF · prepago 1,09 % + 0,0014 UF ·
+  extranjera 2,65 % + 0,0117 UF (`GETNET_TYPES`, integer basis points to avoid float noise).
+- Rounding rule (`getnetFee`), reverse-engineered and verified against the 24 transactions of 02–04/10/2026 in the Getnet portal, 24/24 to
+  the peso: round(amount × %) + round(UF factor × UF) + round(19 % IVA of that sum).
+- UF: never estimated. `getUF(date)`: localStorage `cobralUF` (official values never change once published) → mindicador.cl yearly series
+  (CORS ok, web + APK) → SII yearly table `uf<year>.htm` via CapacitorHttp (APK only; the web is blocked by CORS). SII and mindicador agreed on
+  all 647 days of 2025–2026. Values are published on the 9th for the 10th–9th, so the cache covers offline days ahead. No value → the card says
+  why (offline / not published yet) and offers Reintentar or typing the SII value by hand (`cobralUFManual`, labelled "Ingresada a mano").
+  Prefetch (`ufPrefetch`, 5 s after start and on every return to the app): today's UF missing → always fetch; today present but
+  today+3 missing → fetch at most every 6 h (`cobralUFTry`). So the 10th–9th period is stored as soon as it is published on the 9th
+  and the 10th works offline. Verified: 4 cases → 1/1/0/0 network requests.
+- Vouchers are per device (`cobralGetnetVouchers`, keyed by date, pruned after 180 days), not synced.
+- Step 2 → E8 below (step 2): choose the active POS (Haulmer % / Getnet contract) for card sales so `sale.fee` uses the Getnet formula.
+
+## E8 · Card machine selector: Haulmer or Getnet (v6.8, 2026-10-05)
+Requested by Jimbo: in Configuración choose which machine charges débito/crédito; Haulmer keeps the editable flat % (IVA incl.,
+1,3029 / 2,499), Getnet uses the contract formula automatically (not editable).
+- `state.posProvider` ('haulmer' default | 'getnet'), saved in `ventasApp` and synced in the settings doc (`posProvider`).
+- `saleFee(amount, method, date, pos)` is now the only fee computation: cart (`getCartTotal`), sale edit, both debt payments, CSV
+  import. Getnet = `getnetFee` with the official UF of the sale's day read from the device (`ufLocal`: `cobralUF`, then manual).
+- Getnet sales carry `pos:'getnet'` + `feePending`. No UF for that day on the device → fee 0 and `feePending:true` (summary says
+  "falta la UF del día · se calcula al conectarse"); `resolvePendingFees()` (on every `ufPrefetch` and after a manual UF) fetches the
+  UF and fills fee / finalAmount / margin / marginPct. Haulmer sales are stored exactly as before (no new fields). Sales docs are
+  written with a plain set (no merge), so no `sync-core` change was needed.
+- Editing a sale keeps the machine it was charged on (`state.editingSalePos`; legacy card sales = Haulmer); cash/transfer sales use the
+  current setting. Existing sales are never recalculated when switching.
+- Payment badges (`feeBadge`): "Getnet 0,63% + 0,0015 UF" / "-1,3029% IVA incl."; summary row "Comisión Getnet (IVA incluido)".
+- Prepago / foreign cards are charged at the national rate in sales (the voucher type is unknown at sale time); the calculator has them.
+- Emulator (real taps + cdp): Getnet débito $2.000 → $89, crédito $3.000 → $145, débito $5.000 → $112 (= portal), efectivo 0, no UF →
+  pending → resolved to $81 with margin, legacy sale edit stays Haulmer, back to Haulmer → 1,3029 %; test sales removed (296 left).
