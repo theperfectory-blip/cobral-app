@@ -556,3 +556,11 @@ Requested by Jimbo: in Configuración choose which machine charges débito/créd
 - Prepago / foreign cards are charged at the national rate in sales (the voucher type is unknown at sale time); the calculator has them.
 - Emulator (real taps + cdp): Getnet débito $2.000 → $89, crédito $3.000 → $145, débito $5.000 → $112 (= portal), efectivo 0, no UF →
   pending → resolved to $81 with margin, legacy sale edit stays Haulmer, back to Haulmer → 1,3029 %; test sales removed (296 left).
+
+## E7.1 · Calculator UX fix from Jimbo's phone (v6.8.1, 2026-10-05)
+On the phone the primary "Listo" button looked like "calculate" but only closed the sheet (nothing saved, no sound), and the soft
+keyboard hid the type buttons whose small grey text was the only result. (The emulator has hw.keyboard=yes → no full soft keyboard,
+so this never showed there.) Now: typing an amount shows "Comisión $X / Te abonan $Y" in large type on every card-type button
+(the main use: just calculate); keyboard "done"/Enter hides the keyboard; the amount field scrolls to the top on focus; footer
+"Cerrar" (outline) warns once if an amount was typed but not added; adding plays the sound + toast "Crédito $6.600 agregado · te
+abonan $6.386". Verified with real taps on the emulator (Oct 3, $6.600 crédito → $214 / $6.386 = portal); sales untouched (296).
