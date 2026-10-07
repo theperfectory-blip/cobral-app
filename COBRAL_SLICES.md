@@ -586,3 +586,13 @@ Fixes:
 Tests: `tools/sync-repair-e2e.mjs` (emulators): A) server lost 550 sales + settings → verify finds 551 → push restores 1000;
 B) 600 writes queued offline then the client is abandoned → next launch recovers 601 ledger entries and uploads them. Web repro with the
 real backup: 2863 kept (28 re-id'd), 2863 uploaded; recovery CSV import → 28 sales identical to the originals, ids unique.
+
+## E10 · Calculadora Getnet: "Cierre de caja" mode (v6.8.3, 2026-10-07)
+Jimbo uses the terminal's closing voucher (per card type: number of sales + total), not each sale voucher. Typing a type's total as
+one voucher charged the UF fixed fee once instead of once per sale (e.g. 11 débito $52.500 → $468 instead of $1.206), so his
+deposits never matched. New mode selector [Cierre de caja | Voucher por voucher] (remembered, `cobralGnMode`, default cierre):
+per type N° ventas + Monto total (`cobralGetnetCierre` per date) → `getnetFeeTotal(n,total)` = round(total×%) + n×round(UF fixed)
++ IVA. Getnet rounds each sale, so totals can differ up to $1 per sale (20.000 random cases: max 1.00/sale); on his real days
+$0–$1 per day (Oct 3 $57.681 vs $57.680, Oct 4 $53.086 vs $53.085, Oct 2 exact). The note says so and points to "Voucher por
+voucher" for the exact peso. Verified in the app UI: voucher mode reproduces the 3 deposits of 06/10 exactly ($55 / $57.680 /
+$53.085, confirmed in the Getnet portal "Abonos").
