@@ -364,8 +364,8 @@ test('F10 stockDelta: null when the base or the local stock is unknown / not a f
 });
 
 test('F10 optionalKeysToDelete: lists known optional keys that are absent locally', () => {
-  assert.deepEqual(optionalKeysToDelete({ id: 1, name: 'x', offers: [], gramStep: 250 }).sort(), ['imageUrl', 'locationPrices', 'packSize']);
-  assert.deepEqual(optionalKeysToDelete({ id: 1, locationPrices: { A: 1 }, offers: [], gramStep: 1, imageUrl: '', packSize: 12 }), []);
+  assert.deepEqual(optionalKeysToDelete({ id: 1, name: 'x', offers: [], gramStep: 250 }).sort(), ['imageUrl', 'locationPrices', 'packInfo', 'packSize']);
+  assert.deepEqual(optionalKeysToDelete({ id: 1, locationPrices: { A: 1 }, offers: [], gramStep: 1, imageUrl: '', packSize: 12, packInfo: { mode: 'fixed', paq: 12, porPaq: 1, porVenta: 1 } }), []);
   assert.deepEqual(optionalKeysToDelete({ id: 1 }).sort(), [...OPTIONAL_PRODUCT_KEYS].sort());
   assert.ok(OPTIONAL_PRODUCT_KEYS.includes('locationPrices') && OPTIONAL_PRODUCT_KEYS.includes('offers'));
   // photos: imageUrl is optional too — '' (photo deleted on purpose) is a real value and must NOT be deleted remotely
@@ -376,8 +376,8 @@ test('F10 optionalKeysToDelete: lists known optional keys that are absent locall
 
 test('F10 planProductWrite: known base -> delta mode; unknown base or absolute flag -> absolute mode', () => {
   const doc = { id: 7, stock: 7, offers: [], gramStep: 250 };
-  assert.deepEqual(planProductWrite({ 7: 10 }, doc), { mode: 'delta', delta: -3, deleteKeys: ['locationPrices', 'imageUrl', 'packSize'] });
-  assert.deepEqual(planProductWrite({ 7: 7 }, doc), { mode: 'delta', delta: 0, deleteKeys: ['locationPrices', 'imageUrl', 'packSize'] });
+  assert.deepEqual(planProductWrite({ 7: 10 }, doc), { mode: 'delta', delta: -3, deleteKeys: ['locationPrices', 'imageUrl', 'packSize', 'packInfo'] });
+  assert.deepEqual(planProductWrite({ 7: 7 }, doc), { mode: 'delta', delta: 0, deleteKeys: ['locationPrices', 'imageUrl', 'packSize', 'packInfo'] });
   assert.deepEqual(planProductWrite({}, doc), { mode: 'absolute' });
   assert.deepEqual(planProductWrite({ 7: 10 }, doc, { absolute: true }), { mode: 'absolute' });
   assert.deepEqual(planProductWrite({ 7: 10 }, { id: 7, name: 'no stock' }), { mode: 'absolute' });

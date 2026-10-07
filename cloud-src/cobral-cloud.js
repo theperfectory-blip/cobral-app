@@ -45,7 +45,9 @@
 //     use — unchanged behavior. clearIndexedDbPersistence can reject if another tab still holds the
 //     same Firestore instance open (persistentMultipleTabManager); that failure is swallowed here —
 //     callers should still proceed with clearing their own app-level storage and reloading.
-//   verify() -> Promise<{ ok:true, missing:number } | { ok:false, reason }>
+//   verify({ only } = {}) -> Promise<{ ok:true, missing:number } | { ok:false, reason }>
+//     only (optional): array of collection names (e.g. ['products'], cheap check run on every APK launch).
+//     A product doc without a numeric stock counts as missing.
 //     Reads every doc id of this user FROM THE SERVER and drops from the shadow each doc the shadow believes is
 //     uploaded but the server does not have (and the settings doc), so the next push() re-sends them. Costs one read
 //     per server doc: the app runs it once per device (repair of uploads lost before the unacked ledger existed) and
@@ -812,26 +814,30 @@ export function createClient() {
   // verify() — compare the shadow with what the server really has (see API doc above)
   // -------------------------------------------------------------------------
 
-  async function verify() {
+  async function verify(opts) {
     if (!currentUid) return { ok: false, reason: 'signed-out' };
+    const only = opts && Array.isArray(opts.only) ? opts.only : null;
+    const cols = only ? COLLECTIONS.filter((c) => only.includes(c)) : COLLECTIONS;
     const uid = currentUid;
     const gen = authGen;
     try {
       const onServer = {};
-      for (const col of COLLECTIONS) {
+      for (const col of cols) {
         const snap = await getDocsFromServer(collectionRef(uid, col));
         onServer[col] = new Set();
-        snap.forEach((d) => onServer[col].add(d.id));
+        // E11: a product doc without a numeric stock (created by a stock increment()/merge on a doc that did not exist on
+        // the server) counts as missing, so the next push() rewrites it with the absolute local stock.
+        snap.forEach((d) => { const data = d.data(); if (col === 'products' && !(data && data._deleted) && typeof (data && data.stock) !== 'number') return; onServer[col].add(d.id); });
       }
-      const settingsSnap = await getDocFromServer(settingsRef(uid));
+      const settingsSnap = !only || only.includes('settings') ? await getDocFromServer(settingsRef(uid)) : null;
       if (gen !== authGen) return { ok: false, reason: 'auth-changed' };
       let missing = 0;
-      for (const col of COLLECTIONS) {
+      for (const col of cols) {
         for (const id of Object.keys(shadow[col] || {})) {
           if (!onServer[col].has(id)) { forgetShadowEntry(col, id); missing++; }
         }
       }
-      if (shadow.settings && !settingsSnap.exists()) { forgetShadowEntry('settings', 'settings'); missing++; }
+      if (settingsSnap && shadow.settings && !settingsSnap.exists()) { forgetShadowEntry('settings', 'settings'); missing++; }
       if (missing) persistShadow(uid);
       debugStats.verifyMissing = missing;
       return { ok: true, missing };

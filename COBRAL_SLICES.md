@@ -596,3 +596,26 @@ per type N° ventas + Monto total (`cobralGetnetCierre` per date) → `getnetFee
 $0–$1 per day (Oct 3 $57.681 vs $57.680, Oct 4 $53.086 vs $53.085, Oct 2 exact). The note says so and points to "Voucher por
 voucher" for the exact peso. Verified in the app UI: voucher mode reproduces the 3 deposits of 06/10 exactly ($55 / $57.680 /
 $53.085, confirmed in the Getnet portal "Abonos").
+
+## E11 · Inventory stock repair + packaging with calculation (v6.8.4, 2026-10-07)
+Incident: after the lost first-sync batch (E9) the products never reached the server. Every later product push used F10 delta mode
+(shadow.stock known) → `set(merge)+increment(delta)` on a missing doc created product docs whose stock was only the delta (−12 = the
+units sold) or no stock at all (imageUrl-only updates). The phone's own-echo drift merge then copied those values locally: 42 products
+negative, 47 without stock (inventory cost "NaN"). Sales and product data were intact.
+Repair (2026-10-07, with Jimbo's OK, from a signed-in web session): stock = 2026-10-02 backup − units sold in the 79 sales since
+(+ purchases he reported: Calendario grande +1000, Taco grande +800, Cooler hermético +10; 90*120 2 set to 0 for him to count).
+89 products written; re-read from the server: 0 negative, 0 missing, inventory cost $3.729.096.
+Code:
+- `verify({ only })`: a product doc without numeric stock counts as missing; the APK runs `verify({only:['products']})` on every
+  launch (~100 reads) and the full verify once per device. e2e scenario C (doc without stock → rewritten with 599). Scenario A now uses
+  700 sales (the emulator intermittently answered 'unavailable' for 1000) + verify retries in the test.
+- Never NaN: remote product without stock keeps the local one (or 0); load coerces non-finite stock to 0; inventory cost guards.
+- Packaging (`packInfo`, optional key synced): "Cantidad fija" = paquetes × unidades por paquete ÷ unidades que vendes juntas →
+  packSize (90*120: 30×10÷4 = 75) and, with the embalaje cost, precio de compra = costo / packSize (keeps the sale price, recomputes the
+  margin); "Ingresar stock" accepts this embalaje's cost and updates the cost. "Por kilo" (variable yield): "+ Saco / embalaje" asks the
+  sale units made and the amount paid → stock += units, cost = paid / units, last yield remembered. Legacy packSize-only products open as
+  "Cantidad fija" N × 1 ÷ 1. UI verified on a test account (emulators, separate origin 127.0.0.1).
+- Jimbo (same day): "Por kilo" had no cost field → the editor now has "Costo del saco" + "Paquetes que te rindió" (prefilled from the
+  last sack) → cost per paquete / per bolsa / per kilo, sets the precio de compra (sale price kept). packInfo stores costo (per sack)
+  and rinde; "+ Saco / embalaje" prefills the amount paid = sacks × saved cost and updates costo / rinde. Verified: $45.000 / 58 →
+  $776; 2 sacks → $90.000 prefilled, 120 paquetes → $750, editor reopens with $45.000 / 60.

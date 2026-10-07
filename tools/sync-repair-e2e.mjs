@@ -46,6 +46,7 @@ async function deleteDocs(names) {
     assert.ok(r.ok, 'batchWrite delete failed: ' + r.status);
   }
 }
+async function verifyRetry(c, opts) { let v; for (let i = 0; i < 5; i++) { v = await c.verify(opts); if (v.ok || v.reason !== 'unavailable') return v; await sleep(3000); } return v; }
 let appSeq = 0;
 function newClient() {
   const c = createClient();
@@ -62,24 +63,24 @@ const ok = (msg) => { passed++; console.log('PASS ' + msg); };
   const email = `repair-a-${Date.now()}@cobral.test`;
   assert.equal((await c.signUp(email, 'prueba123')).ok, true);
   await waitUntil(() => user(), 'A signed in');
-  const snap = snapshot(1000);
+  const snap = snapshot(700);
   await c.firstSync(snap);
   await waitUntil(() => c.status() === 'synced', 'A first upload acked');
   const uid = user().uid;
   let ids = await serverIds(uid);
-  assert.equal(ids.length, 1000); ok('A: first sync uploaded 1000 sales');
+  assert.equal(ids.length, 700); ok('A: first sync uploaded 700 sales');
   await deleteDocs(ids.slice(450));
   await fetch(`${BASE}/users/${uid}/meta/settings`, { method: 'DELETE', headers: OWNER });
   assert.equal((await serverIds(uid)).length, 450); ok('A: server now has 450 (simulated loss), client still says ' + c.status());
-  const v = await c.verify();
-  assert.equal(v.ok, true); assert.equal(v.missing, 551); ok('A: verify() found 550 sales + settings missing');
+  const v = await verifyRetry(c);
+  assert.equal(v.ok, true, JSON.stringify(v)); assert.equal(v.missing, 251); ok('A: verify() found 250 sales + settings missing');
   c.push(snap);
   await sleep(2000);
   await waitUntil(() => c.status() === 'synced', 'A re-upload acked');
-  assert.equal((await serverIds(uid)).length, 1000);
+  assert.equal((await serverIds(uid)).length, 700);
   const st = await (await fetch(`${BASE}/users/${uid}/meta/settings`, { headers: OWNER })).json();
-  assert.equal(st.fields.userName.stringValue, 'Prueba'); ok('A: push() re-sent everything: 1000 sales + settings on the server');
-  const v2 = await c.verify();
+  assert.equal(st.fields.userName.stringValue, 'Prueba'); ok('A: push() re-sent everything: 700 sales + settings on the server');
+  const v2 = await verifyRetry(c);
   assert.equal(v2.missing, 0); ok('A: second verify() finds nothing missing');
 }
 
@@ -111,6 +112,31 @@ const ok = (msg) => { passed++; console.log('PASS ' + msg); };
   assert.equal((await serverIds(uid)).length, 600);
   assert.equal(Object.keys(JSON.parse(localStorage.getItem('cobralCloudUnacked:' + uid) || '{}')).length, 0);
   ok('B: re-sent on the next launch: 600 sales on the server, ledger empty');
+}
+// ---------- C) a product doc without stock on the server (created by an increment on a missing doc) ----------
+{
+  const { c, user } = newClient();
+  const email = `repair-c-${Date.now()}@cobral.test`;
+  assert.equal((await c.signUp(email, 'prueba123')).ok, true);
+  await waitUntil(() => user(), 'C signed in');
+  const uid = user().uid;
+  const snap = { ...snapshot(0), products: [
+    { id: 1, name: 'Bolsa 90x120', costPrice: 454, salePrice: 1000, stock: 599, unit: 'u', category: 'Bolsas', offers: [], gramStep: 250 },
+    { id: 2, name: 'Sal Azapa', costPrice: 5, salePrice: 9, stock: 26077, unit: 'g', category: 'Salado', offers: [], gramStep: 250 } ] };
+  await c.firstSync(snap);
+  await waitUntil(() => c.status() === 'synced', 'C first upload acked');
+  // Break product 1 the way the phone did: the doc exists but has no stock field.
+  const r = await fetch(`${BASE}/users/${uid}/products/1?updateMask.fieldPaths=stock`, { method: 'PATCH', headers: OWNER, body: JSON.stringify({ fields: {} }) });
+  assert.ok(r.ok, 'PATCH failed ' + r.status);
+  const broken = await (await fetch(`${BASE}/users/${uid}/products/1`, { headers: OWNER })).json();
+  assert.equal(broken.fields.stock, undefined); ok('C: product 1 on the server has no stock (simulated)');
+  const v = await verifyRetry(c, { only: ['products'] });
+  assert.equal(v.ok, true); assert.equal(v.missing, 1); ok('C: verify({only:[products]}) flags the product without stock');
+  c.push(snap);
+  await sleep(2000);
+  await waitUntil(() => c.status() === 'synced', 'C re-upload acked');
+  const fixed = await (await fetch(`${BASE}/users/${uid}/products/1`, { headers: OWNER })).json();
+  assert.equal(fixed.fields.stock.integerValue, '599'); ok('C: push() rewrote the absolute stock (599)');
 }
 console.log(`\n${passed} checks passed`);
 process.exit(0);

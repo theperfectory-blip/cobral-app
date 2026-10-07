@@ -2,7 +2,7 @@
 // Strategy: same-origin GET only; network-first for navigations and .html/.js (so an app update
 // is picked up immediately when online, with a cache fallback offline); cache-first for everything
 // else (icons, fonts, etc. if ever added). Versioned cache name so activate() can drop stale caches.
-const CACHE_NAME = 'cobral-web-v6.8.3';
+const CACHE_NAME = 'cobral-web-v6.8.4';
 const PRECACHE = ['./', 'index.html', 'cloud/config.js', 'cloud/cobral-cloud.js'];
 
 self.addEventListener('install', e => {
