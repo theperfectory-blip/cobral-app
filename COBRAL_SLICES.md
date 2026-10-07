@@ -619,3 +619,6 @@ Code:
   last sack) → cost per paquete / per bolsa / per kilo, sets the precio de compra (sale price kept). packInfo stores costo (per sack)
   and rinde; "+ Saco / embalaje" prefills the amount paid = sacks × saved cost and updates costo / rinde. Verified: $45.000 / 58 →
   $776; 2 sacks → $90.000 prefilled, 120 paquetes → $750, editor reopens with $45.000 / 60.
+- Jimbo: "Kilos por embalaje" was display-only (cost = costo del saco ÷ paquetes que te rindió) and looked required → removed.
+  "Por kilo" now shows Costo del saco + Paquetes que te rindió, then Unidades que vendes juntas (full row); packInfo no longer
+  stores kg (dropped on next save). Verified: $45.000 / 95 de a 7 → $474 por paquete, $68 por bolsa.
