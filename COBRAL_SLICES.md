@@ -619,3 +619,8 @@ Code:
   last sack) → cost per paquete / per bolsa / per kilo, sets the precio de compra (sale price kept). packInfo stores costo (per sack)
   and rinde; "+ Saco / embalaje" prefills the amount paid = sacks × saved cost and updates costo / rinde. Verified: $45.000 / 58 →
   $776; 2 sacks → $90.000 prefilled, 120 paquetes → $750, editor reopens with $45.000 / 60.
+- v6.8.5 · Jimbo asked what "Kilos por embalaje" was for: it only fed a per-kilo note. Now it is useful: "+ Saco / embalaje" has
+  "Kilos por saco (opcional)" (prefilled from the product) and shows the precio por kilo of this purchase vs the previous sack
+  (▲ subió / ▼ bajó %, uses the previous sack's own kg). packInfo.kg and ultimo.kg are saved on restock; the editor label says
+  "(opcional)". A cloud session's branch `claude/por-kilo-sin-kilos` (removed the field) was discarded. Verified on 127.0.0.1
+  (in-memory product, nothing saved): $48.000/30 kg = $1.600 vs $1.500 → ▲ 7%; 2 sacos $88.000 → $1.467 ▼ 2%; empty kg → no line.
