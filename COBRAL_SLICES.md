@@ -630,3 +630,16 @@ Code:
   packInfo.costo still stores the last price paid per embalaje/saco (prefills the next entry). The modal preview shows the averaged
   cost, "antes", and a "Promedio entre lo que ya tenías y …" line. Sale price is never touched. Verified on 127.0.0.1 (in-memory
   products, saveData stubbed).
+- v6.9 (E12) · Jimbo found the packaging / stock UI confusing ("5 embalajes … + 15 unidades sueltas" was the editor's
+  stock ÷ packSize helper, meaningless). Rework: editor "Cómo lo compras" = Sin embalaje / Embalaje fijo / Por kilo with a one-line
+  explanation each; the "Stock = N embalajes + M sueltas" helper and "+ Sumar embalajes" are gone; stock is read-only in the editor of
+  an existing product ("Ingresar / corregir stock" saves the product and opens the stock screen). Every manual stock change goes
+  through `applyStockChange()` (real stock + weighted-average cost) and is logged in `p.movs` (last 20, synced with the product):
+  {tipo: ingreso|correccion|costo|deshacer, antes, despues, costoAntes, costoDespues, nota, packAntes/packDespues}. New screens:
+  "Ingresar unidades/gramos" (products without packaging, "+ Stock" button), "Corregir stock" (count), "Historial de stock" with
+  two-tap "Deshacer" (reverses only that delta, keeps later sales; restores cost / packInfo only if unchanged since). Fixed: since
+  v6.8.6 opening the editor of a packaged product reset the purchase price to the last packaging price — now only when the
+  packaging fields are touched. costRound keeps decimals under $100 (per-gram costs).
+- 2026-10-09 incident: my in-memory test on http://127.0.0.1:5173 ran in a tab signed in to Jimbo's production account → his
+  products were tombstoned. Restored the 98 products from the localhost:5173 copy (stock as of Oct 7). Tests now run on a fresh
+  origin (launch config cobral-web-test, port 5191, signed out).
