@@ -651,3 +651,8 @@ Code:
   stays and the margin is recalculated live (onProdCostInput → onProdSaleInput when a sale price exists): Sopa $1.000 with cost
   $300 → 70 %, $408 → 59,2 %, $500 → 50 %. Only typing a margin changes the sale price; a new product without a sale price still
   gets it from cost + margin once.
+- v6.9.3 · Jimbo's Bolsa Jumbo: saco of 30 paquetes × 100 bolsas, sold in packs of 90 (he takes 10 from each paquete and rebuilds
+  packs with the leftovers). "Ingresar embalajes" (fixed mode) now computes on the TOTAL base units + leftovers saved from the
+  previous entry (`fixedCalc`, packInfo.sobra): 1 saco → 33 (+30 saved), 2nd → 33 (60 saved), 3rd → 34; 3 sacos at once → 100.
+  Cost per sale unit = costo × porVenta ÷ base units ($55.000 × 90 ÷ 3.000 = $1.650, not 55.000 ÷ 33 = $1.667). Undo restores the
+  saved leftovers. Editor: "Sobrantes guardados (opcional)" field to set/fix them. Legacy packSize-only products unchanged.
