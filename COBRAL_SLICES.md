@@ -643,3 +643,7 @@ Code:
 - 2026-10-09 incident: my in-memory test on http://127.0.0.1:5173 ran in a tab signed in to Jimbo's production account → his
   products were tombstoned. Restored the 98 products from the localhost:5173 copy (stock as of Oct 7). Tests now run on a fresh
   origin (launch config cobral-web-test, port 5191, signed out).
+- v6.9.1 · Jimbo: configuring the packaging in the editor replaced the purchase price ($420 → $300), so the next entry averaged
+  $300 with $300. Rule now (`packSetsCost()`): configuring Embalaje fijo / Por kilo of an EXISTING product never changes its stock or
+  purchase price — the cost stays as the packaging price, prefilled in "+ Embalaje / + Saco" and averaged there (910 @ $420 + 100 @
+  $300 → 1010 @ $408). Only a NEW product gets its purchase price filled from the packaging cost.
