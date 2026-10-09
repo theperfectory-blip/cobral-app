@@ -624,3 +624,9 @@ Code:
   (▲ subió / ▼ bajó %, uses the previous sack's own kg). packInfo.kg and ultimo.kg are saved on restock; the editor label says
   "(opcional)". A cloud session's branch `claude/por-kilo-sin-kilos` (removed the field) was discarded. Verified on 127.0.0.1
   (in-memory product, nothing saved): $48.000/30 kg = $1.600 vs $1.500 → ▲ 7%; 2 sacos $88.000 → $1.467 ▼ 2%; empty kg → no line.
+- v6.8.6 · Jimbo asked whether entering a packaging at a new price recalculates the cost against existing stock: it replaced the cost
+  (last price paid). Now "Ingresar stock" and "+ Saco / embalaje" use the weighted average cost, `blendCost(oldCost, stock, newCost,
+  newUnits)`: 20 uds @ $500 + 12 @ $583 → $531; 10 @ $300 + 50 @ $600 → $550. Stock ≤ 0, NaN or no previous cost → new cost as is.
+  packInfo.costo still stores the last price paid per embalaje/saco (prefills the next entry). The modal preview shows the averaged
+  cost, "antes", and a "Promedio entre lo que ya tenías y …" line. Sale price is never touched. Verified on 127.0.0.1 (in-memory
+  products, saveData stubbed).
