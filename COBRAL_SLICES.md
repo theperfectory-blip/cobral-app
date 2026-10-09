@@ -647,3 +647,7 @@ Code:
   $300 with $300. Rule now (`packSetsCost()`): configuring Embalaje fijo / Por kilo of an EXISTING product never changes its stock or
   purchase price — the cost stays as the packaging price, prefilled in "+ Embalaje / + Saco" and averaged there (910 @ $420 + 100 @
   $300 → 1010 @ $408). Only a NEW product gets its purchase price filled from the packaging cost.
+- v6.9.2 · Jimbo: changing the purchase price in the product editor recomputed the SALE price from the margin. Now the sale price
+  stays and the margin is recalculated live (onProdCostInput → onProdSaleInput when a sale price exists): Sopa $1.000 with cost
+  $300 → 70 %, $408 → 59,2 %, $500 → 50 %. Only typing a margin changes the sale price; a new product without a sale price still
+  gets it from cost + margin once.
