@@ -160,6 +160,10 @@ import {
 
 const MAX_BATCH_OPS = 450;
 const PUSH_DEBOUNCE_MS = 1500;
+// Brake: a push that would leave at least MASS_DROP_MIN products (and MASS_DROP_SHARE of the products the cloud has in
+// stock) without stock is not sent; see massStockDrop().
+const MASS_DROP_MIN = 5;
+const MASS_DROP_SHARE = 0.25;
 
 function hasIndexedDB() {
   try {
@@ -245,6 +249,8 @@ export function createClient() {
   let onUserCb = () => {};
   let onRemoteCb = () => {};
   let onStatusCb = () => {};
+  let onBlockedCb = () => {};
+  let allowDropOnce = false;
 
   let currentStatus = 'signed-out';
   let currentUid = null;
@@ -406,8 +412,9 @@ export function createClient() {
   // -------------------------------------------------------------------------
 
   function init(opts) {
-    const { config, onUser, onRemote, onStatus, emulatorHost, appName } = opts || {};
+    const { config, onUser, onRemote, onStatus, onBlocked, emulatorHost, appName } = opts || {};
     onUserCb = typeof onUser === 'function' ? onUser : () => {};
+    onBlockedCb = typeof onBlocked === 'function' ? onBlocked : () => {};
     onRemoteCb = typeof onRemote === 'function' ? onRemote : () => {};
     onStatusCb = typeof onStatus === 'function' ? onStatus : () => {};
 
@@ -601,6 +608,15 @@ export function createClient() {
     // F9: Record dirty ids right away (before flushPush is called), so remote updates arriving
     // during the debounce window can see that these docs are pending local changes.
     const changes = diff(shadow, snapshot);
+    // Brake (2026-10-30): a device holding a stale copy (remote changes it never applied) rewrote Jimbo's cloud with
+    // stock 0. A push that empties the stock of many products the cloud has in stock is dropped and reported; the app
+    // offers to reload from the cloud or to confirm (allowStockDropOnce).
+    const drop = massStockDrop(changes.products.upserts);
+    if (drop) {
+      debugStats.blockedPushes = (debugStats.blockedPushes || 0) + 1;
+      try { onBlockedCb(drop); } catch (e) { /* caller's problem */ }
+      return;
+    }
     for (const col of COLLECTIONS) {
       for (const doc of changes[col].upserts) markDirty(col, String(doc.id));
       for (const id of changes[col].deletes) markDirty(col, String(id));
@@ -610,6 +626,26 @@ export function createClient() {
     pendingSnapshot = snapshot;
     setStatus('pending');
     scheduleFlush(PUSH_DEBOUNCE_MS);
+  }
+
+  /** { count, withStock, names } when these product upserts would leave many products without stock, else null. */
+  function massStockDrop(upserts) {
+    if (allowDropOnce) { allowDropOnce = false; return null; }
+    const base = shadow.stock || {};
+    const withStock = Object.values(base).filter((v) => typeof v === 'number' && v > 0).length;
+    const dropped = upserts.filter((d) => {
+      const b = base[String(d.id)];
+      return typeof b === 'number' && b > 0 && !(typeof d.stock === 'number' && d.stock > 0);
+    });
+    if (dropped.length >= MASS_DROP_MIN && dropped.length >= withStock * MASS_DROP_SHARE) {
+      return { count: dropped.length, withStock, names: dropped.slice(0, 5).map((d) => d.name || String(d.id)) };
+    }
+    return null;
+  }
+
+  /** The next push() skips the brake once (the user confirmed the stock drop). */
+  function allowStockDropOnce() {
+    allowDropOnce = true;
   }
 
   /** Removes one doc's entry from the shadow (upsert or tombstone alike) so a later diff() sees
@@ -924,6 +960,7 @@ export function createClient() {
     resetPassword,
     currentUser: currentUserFn,
     push,
+    allowStockDropOnce,
     firstSync,
     verify,
     status,
